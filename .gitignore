@@ -1,0 +1,15 @@
+.DS_Store
+.work/
+.build/
+DerivedData/
+build/
+*.xcresult/
+**/xcuserdata/
+*.xcuserstate
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+Config/Signing.local.xcconfig
+deliverables/*.docx
+deliverables/*.pdf
+*.ipa
+*.mobileprovision
+*.p12
