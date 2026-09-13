@@ -1,0 +1,70 @@
+name: Validate Longlet
+on:
+  push:
+    branches: [main, 'feat/**', 'fix/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+      - name: Core regression
+        run: swift test
+      - name: Synthetic ground-truth benchmark
+        run: swift run -c release ScrollCaptureBenchmark --output .work/core-benchmark
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install project generator
+        run: command -v xcodegen || brew install xcodegen
+      - name: Generate and build
+        run: scripts/check.sh
+      - name: Choose disposable runner simulator
+        run: |
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); phones=[x for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")]; preferred=[x for x in phones if "Pro" in x["name"]]; print((preferred or phones)[0]["udid"])')
+          echo "SIMULATOR_UDID=$simulator_id" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator_id" || true
+          xcrun simctl bootstatus "$simulator_id" -b
+      - name: Unit and UI workflows
+        run: scripts/test-ios.sh -parallel-testing-enabled NO
+  ios27-compile:
+    runs-on: xcode-27
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install project generator
+        run: command -v xcodegen || brew install xcodegen
+      - name: Compile conditional iOS 27 adapter
+        run: |
+          xcodebuild -version
+          test -f iOS/Experimental/ScreenCaptureKit27Coordinator.swift
+          scripts/generate-project.sh
+          xcodebuild -project ScrollCapture.xcodeproj -scheme ScrollCapture \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .work/iOS27 CODE_SIGNING_ALLOWED=NO \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG CAPTUREKIT_IOS27' \
+            OTHER_LDFLAGS='$(inherited) -weak_framework ScreenCaptureKit' build
+      - name: Keep compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios27-compiler-evidence
+          path: .work/iOS27/Logs/Build/
+          if-no-files-found: ignore
