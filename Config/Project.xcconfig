@@ -1,0 +1,3 @@
+// Shared with app and extension. Copy Signing.example.xcconfig to Signing.local.xcconfig.
+APP_GROUP_IDENTIFIER = group.dev.lzbaclz.longscreenshot
+#include? "Signing.local.xcconfig"

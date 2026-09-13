@@ -1,0 +1,3 @@
+// Set your own team locally. This example is not a valid team or provisioning profile.
+DEVELOPMENT_TEAM =
+CODE_SIGN_STYLE = Automatic

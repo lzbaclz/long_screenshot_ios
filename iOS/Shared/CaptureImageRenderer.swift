@@ -1,0 +1,177 @@
+#if canImport(UIKit)
+import UIKit
+import ImageIO
+import UniformTypeIdentifiers
+
+public struct CaptureRenderDimensions: Equatable, Sendable {
+    public let pixelWidth: Int
+    public let pixelHeight: Int
+    public let wasDownscaled: Bool
+}
+
+extension CaptureSessionRepository {
+    /// Write each original-resolution strip before publishing the manifest that references it.
+    /// A crash can leave an orphan strip, but can never publish an incomplete image file.
+    public func appendStrip(image: CGImage, sourceTopPixel: Int = 0,
+                            to manifest: inout CaptureSessionManifest) throws {
+        guard manifest.status == .capturing, image.width <= 8_192, image.height <= 16_384,
+              manifest.pixelWidth == 0 || manifest.pixelWidth == image.width else {
+            throw CaptureStorageError.invalidManifest
+        }
+        let id = UUID()
+        let strip = CaptureStrip(id: id, fileName: "\(id.uuidString).png", pixelWidth: image.width,
+                                 pixelHeight: image.height, sourceTopPixel: sourceTopPixel)
+        let finalURL = try stripURL(strip, sessionID: manifest.id)
+        try Self.writeImage(image, to: finalURL, format: .png)
+        var updated = manifest
+        updated.pixelWidth = image.width; updated.strips.append(strip); updated.updatedAt = Date()
+        try saveManifest(updated)
+        manifest = updated
+    }
+
+    static func writeImage(_ image: CGImage, to url: URL, format: CaptureExportFormat) throws {
+        let temporaryURL = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).tmp")
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        let type = format == .png ? UTType.png.identifier : UTType.jpeg.identifier
+        guard let destination = CGImageDestinationCreateWithURL(temporaryURL as CFURL, type as CFString, 1, nil)
+        else { throw CaptureStorageError.imageEncodingFailed }
+        let properties: [CFString: Any] = format == .jpeg ? [kCGImageDestinationLossyCompressionQuality: 0.93] : [:]
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw CaptureStorageError.imageEncodingFailed }
+        #if os(iOS)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                                              ofItemAtPath: temporaryURL.path)
+        #endif
+        // Unique destination names ensure neither strips nor earlier exports are overwritten.
+        try FileManager.default.moveItem(at: temporaryURL, to: url)
+    }
+}
+
+/// Renders one source strip at a time into a bounded output bitmap. No giant source composite is created.
+public final class CaptureImageRenderer: @unchecked Sendable {
+    private let repository: CaptureSessionRepository
+    public init(repository: CaptureSessionRepository) { self.repository = repository }
+
+    public func preview(sessionID: UUID, maxDimension: Int = 1_800,
+                        editsOverride: CaptureEditMetadata? = nil) throws -> UIImage {
+        var manifest = try repository.loadSession(id: sessionID)
+        if let editsOverride {
+            try repository.validateEdits(editsOverride, strips: manifest.strips)
+            manifest.edits = editsOverride
+        }
+        let bounds = try sourceBounds(manifest)
+        let maximum = CGFloat(max(64, min(maxDimension, 4_096)))
+        let scale = min(1, maximum / max(bounds.width, bounds.height))
+        let dimensions = CaptureRenderDimensions(pixelWidth: max(1, Int(floor(bounds.width * scale))),
+                                                 pixelHeight: max(1, Int(floor(bounds.height * scale))),
+                                                 wasDownscaled: scale < 1)
+        return try render(manifest, bounds: bounds, dimensions: dimensions)
+    }
+
+    public func outputDimensions(sessionID: UUID, maxPixelCount: Int = 32_000_000,
+                                 allowDownscale: Bool = false) throws -> CaptureRenderDimensions {
+        let bounds = try sourceBounds(repository.loadSession(id: sessionID))
+        return try exportDimensions(bounds: bounds, maxPixelCount: maxPixelCount, allowDownscale: allowDownscale)
+    }
+
+    /// Exports never overwrite source strips or previous exports. Oversized images require explicit consent to downscale.
+    public func export(sessionID: UUID, format: CaptureExportFormat = .png, maxPixelCount: Int = 32_000_000,
+                       allowDownscale: Bool = false) throws -> URL {
+        let manifest = try repository.loadSession(id: sessionID)
+        guard manifest.status != .capturing else { throw CaptureStorageError.sessionStillActive }
+        let bounds = try sourceBounds(manifest)
+        let dimensions = try exportDimensions(bounds: bounds, maxPixelCount: maxPixelCount, allowDownscale: allowDownscale)
+        let rendered = try render(manifest, bounds: bounds, dimensions: dimensions)
+        guard let image = rendered.cgImage else { throw CaptureStorageError.imageEncodingFailed }
+        let directory = repository.sessionDirectory(id: sessionID).appendingPathComponent("Exports", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suffix = format == .png ? "png" : "jpg"
+        let url = directory.appendingPathComponent("Longlet-\(UUID().uuidString).\(suffix)")
+        try CaptureSessionRepository.writeImage(image, to: url, format: format)
+        return url
+    }
+
+    private func sourceBounds(_ manifest: CaptureSessionManifest) throws -> CGRect {
+        guard manifest.pixelWidth > 0, manifest.editedPixelHeight > 0 else { throw CaptureStorageError.noImage }
+        let full = CGRect(x: 0, y: 0, width: manifest.pixelWidth, height: manifest.editedPixelHeight)
+        guard let crop = manifest.edits.crop else { return full }
+        let bounds = normalizedRect(crop, fullSize: full.size).integral.intersection(full)
+        guard !bounds.isNull, !bounds.isEmpty, bounds.width.isFinite, bounds.height.isFinite else {
+            throw CaptureStorageError.invalidEdits
+        }
+        return bounds
+    }
+
+    private func exportDimensions(bounds: CGRect, maxPixelCount: Int,
+                                  allowDownscale: Bool) throws -> CaptureRenderDimensions {
+        guard maxPixelCount > 0 else { throw CaptureStorageError.exportTooLarge }
+        let limit = CGFloat(min(maxPixelCount, 32_000_000))
+        let scale = min(1, sqrt(limit / (bounds.width * bounds.height)),
+                        32_000 / max(bounds.width, bounds.height))
+        guard scale >= 1 || allowDownscale else { throw CaptureStorageError.exportTooLarge }
+        return .init(pixelWidth: max(1, Int(floor(bounds.width * scale))),
+                     pixelHeight: max(1, Int(floor(bounds.height * scale))), wasDownscaled: scale < 1)
+    }
+
+    private func render(_ manifest: CaptureSessionManifest, bounds: CGRect,
+                        dimensions: CaptureRenderDimensions) throws -> UIImage {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+        let size = CGSize(width: dimensions.pixelWidth, height: dimensions.pixelHeight)
+        var failure: Error?
+        let result = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size))
+            let canvas = context.cgContext
+            canvas.saveGState()
+            canvas.scaleBy(x: size.width / bounds.width, y: size.height / bounds.height)
+            canvas.translateBy(x: -bounds.minX, y: -bounds.minY)
+            var y = 0
+            for strip in manifest.strips {
+                let trim = manifest.edits.seamTrimPixels[strip.id.uuidString] ?? 0
+                let remainingHeight = strip.pixelHeight - trim
+                let target = CGRect(x: 0, y: y, width: strip.pixelWidth, height: remainingHeight)
+                defer { y += remainingHeight }
+                guard target.intersects(bounds) else { continue }
+                do {
+                    try autoreleasepool {
+                        let url = try repository.stripURL(strip, sessionID: manifest.id)
+                        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+                              image.width == strip.pixelWidth, image.height == strip.pixelHeight,
+                              let cropped = image.cropping(to: CGRect(x: 0, y: trim,
+                                                                     width: image.width, height: remainingHeight))
+                        else { throw CaptureStorageError.invalidManifest }
+                        UIImage(cgImage: cropped).draw(in: target)
+                    }
+                } catch { failure = error; break }
+            }
+            canvas.restoreGState()
+            // Mask in destination pixel coordinates, rounded outward. Scaled source-space masks can
+            // antialias their edges and leave underlying sensitive pixels partially visible.
+            canvas.setShouldAntialias(false)
+            canvas.setAllowsAntialiasing(false)
+            canvas.setBlendMode(.copy)
+            canvas.setFillColor(UIColor.black.cgColor)
+            for redaction in manifest.edits.redactions {
+                let rect = normalizedRect(redaction, fullSize: CGSize(width: manifest.pixelWidth,
+                                                                       height: manifest.editedPixelHeight)).integral
+                let scaleX = size.width / bounds.width, scaleY = size.height / bounds.height
+                var outputRect = CGRect(x: (rect.minX - bounds.minX) * scaleX,
+                                        y: (rect.minY - bounds.minY) * scaleY,
+                                        width: rect.width * scaleX, height: rect.height * scaleY).integral
+                if scaleX < 1 || scaleY < 1 {
+                    // Cover the adjacent output pixels participating in image resampling.
+                    outputRect = outputRect.insetBy(dx: -2, dy: -2)
+                }
+                canvas.fill(outputRect)
+            }
+        }
+        if let failure { throw failure }
+        return result
+    }
+
+    private func normalizedRect(_ rectangle: NormalizedRect, fullSize: CGSize) -> CGRect {
+        CGRect(x: rectangle.x * fullSize.width, y: rectangle.y * fullSize.height,
+               width: rectangle.width * fullSize.width, height: rectangle.height * fullSize.height)
+    }
+}
+#endif
