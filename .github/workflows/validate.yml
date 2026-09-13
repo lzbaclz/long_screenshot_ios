@@ -54,13 +54,14 @@ jobs:
       - name: Compile conditional iOS 27 adapter
         run: |
           xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          test -d "$(xcrun --sdk iphoneos --show-sdk-path)/System/Library/Frameworks/ScreenCaptureKit.framework"
           test -f iOS/Experimental/ScreenCaptureKit27Coordinator.swift
           scripts/generate-project.sh
           xcodebuild -project ScrollCapture.xcodeproj -scheme ScrollCapture \
-            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -configuration SDK27 -destination 'generic/platform=iOS' \
             -derivedDataPath .work/iOS27 CODE_SIGNING_ALLOWED=NO \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG CAPTUREKIT_IOS27' \
-            OTHER_LDFLAGS='$(inherited) -weak_framework ScreenCaptureKit' build
+            build
       - name: Keep compiler evidence
         if: always()
         uses: actions/upload-artifact@v7

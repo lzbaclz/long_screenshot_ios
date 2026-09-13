@@ -9,9 +9,11 @@ options:
 configs:
   Debug: debug
   Release: release
+  SDK27: debug
 configFiles:
   Debug: Config/Project.xcconfig
   Release: Config/Project.xcconfig
+  SDK27: Config/Project.xcconfig
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -23,6 +25,9 @@ settings:
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: NO
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    SDK27:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG CAPTUREKIT_IOS27
 packages:
   ScrollCaptureCore:
     path: .
@@ -45,6 +50,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+      configs:
+        SDK27:
+          OTHER_LDFLAGS: $(inherited) -weak_framework ScreenCaptureKit
     info:
       path: Config/App-Info.plist
       properties:
@@ -160,6 +168,17 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: ScrollCapture
+  ScrollCapturePermissionsTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: iOS/PermissionUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lzbaclz.longscreenshot.permissiontests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: ScrollCapture
 schemes:
   ScrollCapture:
     build:
@@ -193,3 +212,12 @@ schemes:
       config: Debug
       targets:
         - name: ScrollCaptureDeviceTests
+  ScrollCapturePermissions:
+    build:
+      targets:
+        ScrollCapture: all
+        ScrollCapturePermissionsTests: [test]
+    test:
+      config: Debug
+      targets:
+        - name: ScrollCapturePermissionsTests

@@ -80,9 +80,3 @@ If you email support, we receive your email address, message and attachments and
 ### Your choices and changes
 
 You may choose not to start capture, stop broadcasting through iOS, deny Photos permission, delete captures and manage permissions in iOS Settings. We cannot remotely access or recover screenshots stored only on your device. If a future version adds cloud services or analytics, its policy and choices will be updated; this policy does not authorize features that do not exist today.
-
-## 发布前内部核对
-
-本文依据 `iOS/BroadcastExtension/SampleHandler.swift`、`iOS/Shared/`、`PurchaseStore.swift`、`PlatformViews.swift` 和 `Config/PrivacyInfo.xcprivacy`。最终提交时重新检查依赖与网络行为，不能仅凭当前隐私清单的空收集列表判定申报正确。
-
-App Store 隐私标签的候选答案是“不收集数据”：当前截图与额度在设备上处理，没有开发者后台。仍须逐项评估最终应用、第三方组件和实际反馈流程。Apple 对设备外收集的定义见 [App privacy details](https://developer.apple.com/app-store/app-privacy-details/)；所有应用都需要公开隐私政策 URL，见 [App Store Connect 隐私资料](https://developer.apple.com/help/app-store-connect/reference/app-privacy/)。本 Markdown 尚不能代替公开 URL。

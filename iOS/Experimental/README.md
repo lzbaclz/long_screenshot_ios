@@ -1,6 +1,6 @@
 # iOS 27 ScreenCaptureKit 实验后端
 
-状态：已按 Apple 官方 iOS 27 示例及符号文档实现，**尚未用 iOS 27 SDK 编译，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
+状态：已按 Apple 官方 iOS 27 示例及符号文档实现。首个真实 Xcode 27 CI 尝试已运行，但在广播扩展链接阶段失败，**实验适配器尚未完成新 SDK 类型检查，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
 
 两个 Swift 文件的全部内容由 `#if CAPTUREKIT_IOS27 && os(iOS)` 包围，类型标记为 `@available(iOS 27.0, *)`。默认 UI 与 ReplayKit 扩展没有替换。本目录不修改工程签名、Info.plist、生产默认值或购买功能。
 
@@ -63,7 +63,7 @@ if #available(iOS 27.0, *) {
 | --- | --- | --- |
 | SDK 26.2，开关关闭，共享代码与 ReplayKit 完整代码生成 | 2026-09-14 本机通过 | `swiftc -emit-object -whole-module-optimization -swift-version 6 -strict-concurrency=complete -application-extension`，包含本目录且未设置开关 |
 | 仅语法解析，开关开启 | 2026-09-14 本机通过；不是类型检查 | `swiftc -frontend -parse -D CAPTUREKIT_IOS27 ... iOS/Experimental/*.swift` |
-| Xcode / SDK 27，开关开启真实编译 | **未执行** | — |
+| Xcode / SDK 27，开关开启真实编译 | **已尝试，链接失败；未完成实验适配器类型检查** | 下方 CI 记录 |
 | iOS 27 真机选择器、授权、整屏与后台 | **未执行** | — |
 | 与 ReplayKit 相同内容的像素/丢帧/内存比较 | **未执行** | — |
 | 停止期间启动、取消后的旧回调、来源更改 | **未执行** | — |
@@ -73,3 +73,16 @@ if #available(iOS 27.0, *) {
 CI 必须同时记录 `xcodebuild -version`、所选 SDK、开关值及退出码。仅找到名字像 Xcode 27 的 runner 或把此文件排除出编译都不能证明通过。上表未完成前，不替换默认后端、不变更商店兼容性承诺，也不把本实现计入 G1/G3 的实机结果。
 
 如果后续决定向用户开放此后端，须同步更新引导、审核步骤及隐私政策中“由扩展接收画面”的说明，使其覆盖宿主直接接收帧的实际行为。当前实验协调器另有两条英文配置错误提示，正式双语入口接入前还需纳入本地化回归。
+
+## 2026-09-14 首次新 SDK CI 记录
+
+- 代码提交：`83aa61acefd531f7f13f5d093ac03799215db1e6`，分支 `feat/scroll-capture-mvp`。
+- [CI run 34790689726 的 ios27-compile job](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34790689726/job/103814212994) 已实际运行，状态为 `failure`，不是排队或 runner 不可用。
+- runner：`xcode-27-arm64`，镜像 `20260907.0173.1`；Xcode `27.0`、build `27A5252f`，路径为 `Xcode_27_beta_6.app`。
+- 实际编译 SDK：`iPhoneSimulator27.0.sdk`，构建目标 `generic/platform=iOS Simulator`；开关值为 `DEBUG CAPTUREKIT_IOS27`，`CODE_SIGNING_ALLOWED=NO`。
+- 唯一编译失败诊断来自 `BroadcastExtension` 的链接：`ld: framework 'ScreenCaptureKit' not found`。全局 `OTHER_LDFLAGS` 把 `-weak_framework ScreenCaptureKit` 也传给了不需要该框架的广播扩展。
+- 日志没有实验 Swift 文件的编译记录或类型错误；不能据此修改适配器 API，也不能宣称新接口已经编译通过。原始 job 日志仅保存在本机 `.work/ios27-ci-audit/job-103814212994.log`。
+
+下一次由 CI/工程维护者先确认 `iphoneos` SDK 内实际存在的框架，再以 `generic/platform=iOS`、关闭签名的宿主实验构建验证；弱链接配置应限于需要框架的实验宿主。此处仅记录建议，没有修改工作流或工程。若设备 SDK 也不提供框架，应保存其目录与工具链证据，不通过 `canImport` 静默跳过适配器来制造成功结果。
+
+本可选任务不阻塞已上传的 TestFlight `0.1.0 (1)`：该分发 IPA 使用默认 ReplayKit，未载入 ScreenCaptureKit。本次没有改动生产二进制、提交、推送或取消 CI。
