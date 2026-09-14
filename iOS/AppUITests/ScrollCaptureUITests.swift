@@ -90,7 +90,17 @@ final class ScrollCaptureUITests: XCTestCase {
         app.alerts.buttons["知道了"].tap()
         app.buttons["detail.share"].tap()
         XCTAssertTrue(element("ActivityListView").waitForExistence(timeout: 10))
-        XCTAssertTrue(app.cells["拷贝"].exists)
+        // The remote system share view can appear before its actions load, and
+        // its locale can follow the runner rather than this app's launch locale.
+        let copyAction = app.cells.matching(NSPredicate(format: "label == %@ OR label == %@", "拷贝", "Copy")).firstMatch
+        let shareActionsLoaded = copyAction.waitForExistence(timeout: 15)
+        if !shareActionsLoaded {
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "system-share-missing-actions"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
+        XCTAssertTrue(shareActionsLoaded, "The actual system Copy action must become available before dismissing sharing.")
         attachScreenshot("system-share")
         app.buttons["header.closeButton"].tap()
         XCTAssertTrue(app.buttons["detail.savePhotos"].waitForExistence(timeout: 5))

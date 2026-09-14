@@ -42,6 +42,15 @@ jobs:
           xcrun simctl bootstatus "$simulator_id" -b
       - name: Unit and UI workflows
         run: scripts/test-ios.sh -parallel-testing-enabled NO
+      - name: Keep iOS test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-test-results
+          path: .work/test-results/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
   ios27-compile:
     runs-on: xcode-27
     timeout-minutes: 25
