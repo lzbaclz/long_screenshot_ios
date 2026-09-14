@@ -1,6 +1,6 @@
 # iOS 27 ScreenCaptureKit 实验后端
 
-状态：已按 Apple 官方 iOS 27 示例及符号文档实现。首个真实 Xcode 27 CI 尝试已运行，但在广播扩展链接阶段失败，**实验适配器尚未完成新 SDK 类型检查，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
+状态：已按 Apple 官方 iOS 27 示例及符号文档实现。设备 SDK 27 CI 已进入实验适配器类型检查，发现五个实际标为 iOS 不可用的配置属性；本地已移除这些调用，**修复尚待新一轮 SDK 27 编译，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
 
 两个 Swift 文件的全部内容由 `#if CAPTUREKIT_IOS27 && os(iOS)` 包围，类型标记为 `@available(iOS 27.0, *)`。默认 UI 与 ReplayKit 扩展没有替换。本目录不修改工程签名、Info.plist、生产默认值或购买功能。
 
@@ -12,13 +12,13 @@
 | --- | --- |
 | 整屏系统选择器 | `SCContentSharingPicker.shared`、`isAvailable`、`present()`；不调用仅捕捉自身应用的 `presentForCurrentApplication()` |
 | 选择器观察 | `SCContentSharingPickerObserver` 的选择、取消、失败回调；独立弱引用桥接到 MainActor，并给每次请求编号，忽略旧回调 |
-| 无音频 | 关闭 `showsMicrophoneControl`、`showsCameraControl`；配置 `capturesAudio=false`、`captureMicrophone=false`；只添加 `.screen` output |
+| 无音频 | 关闭 `showsMicrophoneControl`、`showsCameraControl`，配置 `capturesAudio=false`，只添加 `.screen` output；不调用实际 iOS SDK 禁止的 `captureMicrophone` setter |
 | 像素尺寸 | `filter.contentRect × filter.pointPixelScale` 配置输出宽高；不使用 UIKit 猜测另一应用尺寸 |
-| 有界缓冲 | `queueDepth=3`，官方文档所述最小默认深度；约 7 fps 请求，应用最多每 0.15 秒处理一帧，不额外排队保留样本 |
+| 应用侧有界处理 | 应用最多每 0.15 秒处理一帧，不额外排队保留样本。iOS 不公开 `queueDepth` 或 `minimumFrameInterval` setter；系统队列由框架管理，不承诺可设为三帧 |
 | 状态与方向 | 使用 `SCStreamFrameInfo.status` / `SCFrameStatus` 和 `.videoOrientation` 的 `CGImagePropertyOrientation` 值；不沿用 ReplayKit 的附件键 |
 | 手动及系统停止 | `SCStream.stopCapture()` 与 `SCStreamDelegate`；`SCStreamError.Code.userStopped` 按用户正常停止处理，其他暂停/空白/失效状态保守保留部分 |
 
-没有使用 macOS 专属的 `allowedPickerModes`、`allowsChangingSelectedContent` 或枚举全部可共享应用来绕过用户选择。官网某些类型总页列出跨平台成员，必须逐个看 iOS 可用性，不能照抄 macOS 示例。参见 [选择器](https://developer.apple.com/documentation/screencapturekit/sccontentsharingpicker)、[队列深度](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/queuedepth)、[帧方向](https://developer.apple.com/documentation/screencapturekit/scstreamframeinfo/videoorientation)。
+没有使用 macOS 专属的 `allowedPickerModes`、`allowsChangingSelectedContent` 或枚举全部可共享应用来绕过用户选择。官网某些成员页的 iOS 可用性元数据也与 beta 6 实际头文件冲突；以所选 SDK 编译器的可用性诊断为准。参见 [选择器](https://developer.apple.com/documentation/screencapturekit/sccontentsharingpicker)、[队列深度](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/queuedepth)、[帧方向](https://developer.apple.com/documentation/screencapturekit/scstreamframeinfo/videoorientation)。
 
 ## 工程配置（仅实验变体）
 
@@ -63,7 +63,7 @@ if #available(iOS 27.0, *) {
 | --- | --- | --- |
 | SDK 26.2，开关关闭，共享代码与 ReplayKit 完整代码生成 | 2026-09-14 本机通过 | `swiftc -emit-object -whole-module-optimization -swift-version 6 -strict-concurrency=complete -application-extension`，包含本目录且未设置开关 |
 | 仅语法解析，开关开启 | 2026-09-14 本机通过；不是类型检查 | `swiftc -frontend -parse -D CAPTUREKIT_IOS27 ... iOS/Experimental/*.swift` |
-| Xcode / SDK 27，开关开启真实编译 | **已尝试，链接失败；未完成实验适配器类型检查** | 下方 CI 记录 |
+| Xcode / SDK 27，开关开启真实编译 | **已进入设备 SDK 类型检查；五处可用性调用已本地修复，等待重跑** | 下方第二次 CI 记录 |
 | iOS 27 真机选择器、授权、整屏与后台 | **未执行** | — |
 | 与 ReplayKit 相同内容的像素/丢帧/内存比较 | **未执行** | — |
 | 停止期间启动、取消后的旧回调、来源更改 | **未执行** | — |
@@ -86,3 +86,25 @@ CI 必须同时记录 `xcodebuild -version`、所选 SDK、开关值及退出码
 下一次由 CI/工程维护者先确认 `iphoneos` SDK 内实际存在的框架，再以 `generic/platform=iOS`、关闭签名的宿主实验构建验证；弱链接配置应限于需要框架的实验宿主。此处仅记录建议，没有修改工作流或工程。若设备 SDK 也不提供框架，应保存其目录与工具链证据，不通过 `canImport` 静默跳过适配器来制造成功结果。
 
 本可选任务不阻塞已上传的 TestFlight `0.1.0 (1)`：该分发 IPA 使用默认 ReplayKit，未载入 ScreenCaptureKit。本次没有改动生产二进制、提交、推送或取消 CI。
+
+## 2026-09-14 第二次新 SDK CI 与修复
+
+[run 34791151569 / job 103815554095](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34791151569/job/103815554095) 使用 `SDK27` 配置、`generic/platform=iOS`、关闭签名，成功找到并读取实际设备 SDK 的框架头文件：
+
+```text
+/Applications/Xcode_27_beta_6.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk/System/Library/Frameworks/ScreenCaptureKit.framework/Headers/SCStream.h
+```
+
+工具链仍为 Xcode `27.0` / `27A5252f`。这次不是框架缺失：编译器已处理两份实验 Swift 源，报告下列属性明确 `API_UNAVAILABLE(ios)`：
+
+| 属性 | 实际头文件位置 | 本地修复 |
+| --- | --- | --- |
+| `pixelFormat` | SCStream.h:254 | 不设像素格式；由 Core Image 处理系统提供的 CVPixelBuffer |
+| `minimumFrameInterval` | SCStream.h:240 | 不配置系统帧率；保留帧处理器的 0.15 秒工作节流 |
+| `queueDepth` | SCStream.h:299 | 不设置系统队列深度；仅保证应用不增加样本排队 |
+| `captureMicrophone` | SCStream.h:380 | 通过 picker 关闭麦克风控制，且不添加麦克风输出 |
+| `preservesAspectRatio` | SCStream.h:264 | 使用系统默认比例策略，按实际输出尺寸处理 |
+
+该 SDK 的队列深度注释描述默认八帧，而先前在线文档描述三帧；这进一步说明不能将线上跨平台说明当成 iOS 实测内存上限。具体缓冲、输入格式和输出比例需要目标设备测量。
+
+修复仅修改实验协调器及本文，未修改默认 ReplayKit、生产 Beta、工程或工作流。开关开启的本地语法解析与 `git diff --check` 可验证语法/格式，但本机没有 SDK 27，不能将它们视为修复后类型检查通过；下一次由维护者推送后读取 CI 的真实结果。原始日志保存在 `.work/ios27-ci-audit/job-103815554095.log`。

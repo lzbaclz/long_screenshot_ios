@@ -1,8 +1,6 @@
 #if CAPTUREKIT_IOS27 && os(iOS)
 @preconcurrency import ScreenCaptureKit
 import Combine
-import CoreMedia
-import CoreVideo
 import Foundation
 
 /// Experimental iOS 27 host adapter. This type is absent unless CAPTUREKIT_IOS27 is explicitly set.
@@ -87,12 +85,11 @@ public final class ScreenCaptureKit27Coordinator: ObservableObject {
 
             let settings = SCStreamConfiguration()
             settings.width = Int(width); settings.height = Int(height)
-            settings.pixelFormat = kCVPixelFormatType_32BGRA
-            settings.minimumFrameInterval = CMTime(value: 1, timescale: 7)
-            settings.queueDepth = 3
             settings.capturesAudio = false
-            settings.captureMicrophone = false
-            settings.preservesAspectRatio = true
+            // iOS 27 beta 6 does not expose pixel-format, cadence, queue-depth,
+            // microphone-capture or aspect-ratio setters. Use system defaults;
+            // the sink accepts CVPixelBuffer formats through Core Image and
+            // throttles processing without adding a retained-sample queue.
 
             let output = try ScreenCaptureKit27FrameSink(repository: repository, configuration: configuration) {
                 [weak self] outcome in
