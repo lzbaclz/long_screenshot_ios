@@ -100,8 +100,23 @@ public struct CaptureDiagnostics: Codable, Equatable, Sendable {
     public var skippedSamples = 0
     public var maximumProcessingMilliseconds = 0.0
     public var terminationCause: String?
+    /// Optional additions decode existing schema-1 diagnostics without migration.
+    public var stageTimings: CaptureStageTimings?
+    public var lifecycleState: String?
+    public var foregroundStatus: String?
+    public var foregroundCandidateCount: Int?
+    public var foregroundSupportCount: Int?
+    public var pauseCount: Int?
+    public var resumeCount: Int?
+    public var recoveredResumeCount: Int?
     public var lastStage = "starting"
     public init() {}
+    /// A persistence failure describes result quality; it must not erase an
+    /// already-known user/system trigger for ending the broadcast.
+    public mutating func recordStorageFailure() {
+        lastStage = "storage"
+        if terminationCause == nil { terminationCause = "processingError" }
+    }
 }
 
 /// Brief interruptions may recover only through the stitcher's unchanged

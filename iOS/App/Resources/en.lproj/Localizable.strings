@@ -299,3 +299,16 @@
 "未写入可用画面。" = "No usable frames were written.";
 "捕捉已暂停，请重新开始下一段。" = "Capture was paused. Start a new capture for the next part.";
 "捕捉意外中断，仅恢复一张完整单屏，未生成连续长图。" = "Capture was interrupted. Only one complete screen was recovered; no continuous long screenshot was created.";
+
+// Fixed wallpaper capture and resumable system pauses.
+"等待系统恢复捕捉" = "Waiting for the system to resume capture";
+"恢复后重新确认画面衔接" = "Checking overlap after resuming";
+"恢复后的画面未能衔接" = "Unable to align the resumed view";
+"识别滚动消息" = "Identifying moving messages";
+"生成图片" = "Rendering an image";
+"读取起始画面" = "Reading the starting view";
+"保存捕捉记录" = "Saving capture details";
+"系统暂停 %lld 次 · 已恢复衔接 %lld 次" = "System pauses: %lld · Successfully resumed: %lld";
+"阶段峰值：%@ · %.0f 毫秒" = "Slowest stage peak: %@ · %.0f ms";
+"捕捉已由系统结束。" = "Capture was ended by the system.";
+"恢复后的画面无法可靠衔接，已保留暂停前的画面。请重新开始下一段。" = "The resumed view could not be aligned reliably. Views saved before the pause have been kept. Start a new capture for the next section.";

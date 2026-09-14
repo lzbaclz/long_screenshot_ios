@@ -149,6 +149,17 @@ struct CaptureDetailView: View {
                         Text(String(format: L10n.text("未衔接 %lld 帧 · 恢复 %lld 次"),
                                     Int64(diagnostics.rejectedFrames), Int64(diagnostics.recoveredGaps)))
                         Text(String(format: L10n.text("单帧最长处理 %.0f 毫秒"), diagnostics.maximumProcessingMilliseconds))
+                        if let pauseCount = diagnostics.pauseCount, pauseCount > 0 {
+                            Text(String(format: L10n.text("系统暂停 %lld 次 · 已恢复衔接 %lld 次"),
+                                        Int64(pauseCount), Int64(diagnostics.recoveredResumeCount ?? 0)))
+                        }
+                        if let timings = diagnostics.stageTimings,
+                           let slowest = CaptureProcessingStage.allCases.filter({ timings[$0] != nil })
+                            .max(by: { (timings[$0]?.maximumMilliseconds ?? 0) < (timings[$1]?.maximumMilliseconds ?? 0) }),
+                           let timing = timings[slowest] {
+                            Text(String(format: L10n.text("阶段峰值：%@ · %.0f 毫秒"),
+                                        L10n.text(slowest.displayLabel), timing.maximumMilliseconds))
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 6)

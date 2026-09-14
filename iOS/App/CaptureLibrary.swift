@@ -119,12 +119,18 @@ extension CaptureDiagnostics {
         case "arming": "等待目标页面稳定"
         case "region": "确认滚动区域"
         case "alignment": "尝试衔接画面"
+        case "foreground": "识别滚动消息"
         case "stitching": "连续拼接画面"
         case "frameConversion": "读取屏幕画面"
         case "missingVideoFrame": "未收到可读取的屏幕画面"
-        case "provisionalImage": "暂存起始画面"
+        case "provisionalImage", "provisionalWrite": "暂存起始画面"
+        case "provisionalRead": "读取起始画面"
+        case "frameRendering": "生成图片"
         case "firstCommit": "首次保存连续画面"
-        case "storage": "写入图片"
+        case "storage", "stripCommit": "写入图片"
+        case "manifestWrite": "保存捕捉记录"
+        case "paused": "等待系统恢复捕捉"
+        case "awaitingResumeOverlap": "恢复后重新确认画面衔接"
         default: "未记录"
         }
     }
@@ -134,7 +140,8 @@ extension CaptureDiagnostics {
         case "manual": "手动停止"
         case "systemPause", "paused": "系统暂停捕捉"
         case "systemInterruption", "interrupted": "系统中断捕捉"
-        case "systemEnded": "系统结束捕捉"
+        case "systemEnded", "systemStop": "系统结束捕捉"
+        case "resumeOverlap": "恢复后的画面未能衔接"
         case "processingError": "画面处理或保存失败"
         case "geometry": "屏幕方向或尺寸改变"
         case "duration": "达到捕捉时长上限"
@@ -142,6 +149,21 @@ extension CaptureDiagnostics {
         case "continuity": "画面未能连续衔接"
         case "screenLimit": "达到捕捉屏数上限"
         default: "未记录"
+        }
+    }
+}
+
+extension CaptureProcessingStage {
+    var displayLabel: String {
+        switch self {
+        case .grayConversion: "读取屏幕画面"
+        case .foregroundRegistration: "识别滚动消息"
+        case .alignment: "尝试衔接画面"
+        case .frameRendering: "生成图片"
+        case .provisionalRead: "读取起始画面"
+        case .provisionalWrite: "暂存起始画面"
+        case .stripCommit: "写入图片"
+        case .manifestWrite: "保存捕捉记录"
         }
     }
 }

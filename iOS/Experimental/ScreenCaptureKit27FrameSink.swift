@@ -25,9 +25,12 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
     private var pipeline: CaptureFramePipeline?
     private var timer: DispatchSourceTimer?
     private var outcome: ScreenCaptureKit27Outcome?
-    private let startedUptime = ProcessInfo.processInfo.systemUptime
+    private var lifecycle = CaptureLifecyclePolicy(startedAt: ProcessInfo.processInfo.systemUptime)
+    private var adapterTimings = CaptureStageTimings()
+    private var maximumProcessingMilliseconds = 0.0
+    private var skippedSamples = 0
     private var lastFrameUptime = 0.0
-    private var lastMotionUptime = 0.0
+    private var lastMotionActiveTime = 0.0
     private var continuity = CaptureContinuityPolicy()
     private var stoppedFrameUptime: Double?
     private var didMove = false
@@ -69,19 +72,37 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
             if stoppedFrameUptime == nil { stoppedFrameUptime = now }
             return
         case .blank, .suspended:
-            _ = finishOnQueue(reason: "捕捉已暂停，已保留成功捕捉的部分。请重新开始下一段。", partial: true)
+            if lifecycle.pause(at: now, requiresOverlap: pipeline?.hasReference == true) {
+                continuity.accept(); imageContext.clearCaches()
+                refreshDiagnostics(stage: "paused"); persistLifecycleSnapshot()
+            }
             return
-        case .complete, .started: break
+        case .complete, .started:
+            if lifecycle.resume(at: now) {
+                continuity.accept(); lastFrameUptime = 0
+                lastMotionActiveTime = lifecycle.activeElapsed(at: now)
+                refreshDiagnostics(stage: lifecycle.needsOverlapAfterResume ? "awaitingResumeOverlap" : "arming")
+                persistLifecycleSnapshot()
+            }
         @unknown default:
             registerRejection(now: now); return
         }
         guard stoppedFrameUptime == nil else { return }
-        guard sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer), now - lastFrameUptime >= 0.15 else { return }
+        guard lifecycle.canProcessFrames, sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        guard now - lastFrameUptime >= 0.15 else { skippedSamples += 1; return }
+        defer {
+            maximumProcessingMilliseconds = max(maximumProcessingMilliseconds,
+                (ProcessInfo.processInfo.systemUptime - now) * 1_000)
+            refreshDiagnostics()
+        }
         lastFrameUptime = now
         let orientation = (values[.videoOrientation] as? NSNumber)?.int32Value ?? 1
         do {
             try autoreleasepool { try process(sampleBuffer, orientation: orientation, now: now) }
-        } catch { _ = finishOnQueue(reason: error.localizedDescription, partial: true) }
+        } catch {
+            refreshDiagnostics(); manifest.diagnostics?.terminationCause = "processingError"
+            _ = finishOnQueue(reason: error.localizedDescription, partial: true)
+        }
     }
 
     func finish(reason: String, partial: Bool) async -> ScreenCaptureKit27Outcome {
@@ -93,7 +114,8 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
     private func process(_ sample: CMSampleBuffer, orientation: Int32, now: Double) throws {
         guard let buffer = CMSampleBufferGetImageBuffer(sample) else { registerRejection(now: now); return }
         guard (1...8).contains(orientation) else { registerRejection(now: now); return }
-        if let initialOrientation, initialOrientation != orientation, !manifest.strips.isEmpty {
+        if let initialOrientation, initialOrientation != orientation,
+           !manifest.strips.isEmpty || lifecycle.needsOverlapAfterResume {
             _ = finishOnQueue(reason: "屏幕方向改变，已保存旋转前的内容。请重新开始下一段。", partial: true)
             return
         }
@@ -106,7 +128,7 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
             throw CaptureStorageError.exportTooLarge
         }
         if originalWidth != 0 && (originalWidth != width || originalHeight != height) {
-            guard manifest.strips.isEmpty else {
+            guard manifest.strips.isEmpty, !lifecycle.needsOverlapAfterResume else {
                 _ = finishOnQueue(reason: "画面尺寸发生变化，已保存变化前的内容。", partial: true); return
             }
             pipeline = nil
@@ -120,8 +142,12 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
                              repository: repository, sessionID: manifest.id)
         }
         guard let pipeline else { return }
-        let gray = try CaptureFrameConversion.grayFrame(source, context: imageContext, width: min(144, width), height: height)
-        let result = try pipeline.ingest(gray) {
+        refreshDiagnostics(stage: "frameConversion")
+        let gray = try measure(.grayConversion) {
+            try CaptureFrameConversion.grayFrame(source, context: imageContext, width: min(144, width), height: height)
+        }
+        let result = try pipeline.ingest(gray,
+            allowProvisionalReplacement: !lifecycle.needsOverlapAfterResume) {
             guard let image = imageContext.createCGImage(source, from: source.extent) else {
                 throw CaptureStorageError.imageEncodingFailed
             }
@@ -131,17 +157,24 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
         if result.replacedProvisionalStart {
             manifest.startWarning = "画面变化后重新确定了起点，请检查图片开头是否完整。"
         }
-        manifest.diagnostics = pipeline.diagnostics
+        refreshDiagnostics(stage: pipeline.diagnostics.lastStage)
         if result.status == .rejected { registerRejection(now: now); return }
+        let trusted = result.status == .advanced || result.status == .backtracked || result.status == .unchanged
+        if trusted, lifecycle.verifiedFrame(at: now) {
+            lastMotionActiveTime = lifecycle.activeElapsed(at: now); refreshDiagnostics()
+        }
         if !result.isArming && (result.status == .advanced || result.status == .backtracked) {
-            didMove = true; lastMotionUptime = now
+            didMove = true; lastMotionActiveTime = lifecycle.activeElapsed(at: now)
         }
         if !result.strips.isEmpty {
             let region = pipeline.effectiveConfiguration
             let maximumHeight = configuration.maximumBodyPixelHeight(frameHeight: height,
                 matchingTopInset: region.topInset, matchingBottomInset: region.bottomInset)
-            let reachedLimit = try repository.commit(result, maximumBodyHeight: maximumHeight, to: &manifest)
-            pipeline.confirmCommit()
+            refreshDiagnostics(stage: "storage")
+            let reachedLimit = try measure(.stripCommit) {
+                try repository.commit(result, maximumBodyHeight: maximumHeight, to: &manifest)
+            }
+            pipeline.confirmCommit(); refreshDiagnostics(stage: "storage")
             if reachedLimit {
                 _ = finishOnQueue(reason: "已达到设置的 \(configuration.maximumScreenCount) 屏上限。", partial: false)
                 return
@@ -151,11 +184,16 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
     }
 
     private func registerRejection(now: Double) {
+        lifecycle.rejectedFrame()
         manifest.rejectedFrameCount += 1
-        lastMotionUptime = now
-        if continuity.reject(at: now, hasStarted: pipeline?.hasStarted == true) {
-            manifest.diagnostics?.terminationCause = "continuity"
-            _ = finishOnQueue(reason: "画面暂时无法连续衔接，已保存已确认的连续长图。请降低滑动速度后重试。", partial: true)
+        lastMotionActiveTime = lifecycle.activeElapsed(at: now)
+        let resuming = lifecycle.needsOverlapAfterResume
+        if continuity.reject(at: lifecycle.activeElapsed(at: now), hasStarted: pipeline?.hasStarted == true || resuming) {
+            manifest.diagnostics?.terminationCause = resuming ? "resumeOverlap" : "continuity"
+            let reason = resuming
+                ? "恢复后的画面无法可靠衔接，已保留暂停前的画面。请重新开始下一段。"
+                : "画面暂时无法连续衔接，已保存已确认的连续长图。请降低滑动速度后重试。"
+            _ = finishOnQueue(reason: reason, partial: true)
         }
     }
 
@@ -171,24 +209,44 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
         guard outcome == nil else { return }
         let now = ProcessInfo.processInfo.systemUptime
         if let stoppedFrameUptime, now - stoppedFrameUptime >= 2 {
-            _ = finishOnQueue(reason: "捕捉已暂停，已保留成功捕捉的部分。请重新开始下一段。", partial: true); return
+            manifest.diagnostics?.terminationCause = "systemStop"
+            _ = finishOnQueue(reason: "捕捉已由系统结束。", partial: false); return
         }
         if repository.hasStopRequest(id: sessionID) {
+            manifest.diagnostics?.terminationCause = "manual"
             _ = finishOnQueue(reason: "已手动结束捕捉。", partial: false); return
         }
-        if now - startedUptime >= manifest.configuration.maximumDurationSeconds {
+        if lifecycle.state != .paused, lifecycle.activeElapsed(at: now) >= manifest.configuration.maximumDurationSeconds {
+            manifest.diagnostics?.terminationCause = "duration"
             _ = finishOnQueue(reason: "已达到设置的时长上限。", partial: false); return
         }
-        if didMove, !continuity.isAwaitingBridge, let idle = manifest.configuration.idleStopSeconds, now - lastMotionUptime >= idle {
+        if didMove, lifecycle.canStopForIdle, !continuity.isAwaitingBridge,
+           let idle = manifest.configuration.idleStopSeconds,
+           lifecycle.activeElapsed(at: now) - lastMotionActiveTime >= idle {
+            manifest.diagnostics?.terminationCause = "idle"
             _ = finishOnQueue(reason: "停止滑动 \(Int(idle)) 秒，已完成捕捉。", partial: false); return
         }
+        refreshDiagnostics(stage: lifecycle.state == .paused ? "paused" : nil)
         manifest.updatedAt = Date()
-        do { try repository.saveManifest(manifest) }
-        catch { _ = finishOnQueue(reason: error.localizedDescription, partial: true) }
+        do { try measure(.manifestWrite) { try repository.saveManifest(manifest) } }
+        catch {
+            if lifecycle.state == .paused { refreshDiagnostics(stage: "storage") }
+            else {
+                refreshDiagnostics(stage: "storage"); manifest.diagnostics?.recordStorageFailure()
+                _ = finishOnQueue(reason: error.localizedDescription, partial: true)
+            }
+        }
     }
 
     private func finishOnQueue(reason: String, partial: Bool) -> ScreenCaptureKit27Outcome {
         if let outcome { return outcome }
+        let finalPartial = partial || lifecycle.hasUnverifiedContent
+        _ = lifecycle.finish(at: ProcessInfo.processInfo.systemUptime)
+        refreshDiagnostics()
+        if manifest.diagnostics?.terminationCause == nil {
+            manifest.diagnostics?.terminationCause = reason == "已手动结束捕捉。" ? "manual" : partial ? "systemInterruption" : "systemStop"
+        }
+        refreshDiagnostics()
         timer?.cancel(); timer = nil
         var finalReason = reason
         if manifest.strips.isEmpty {
@@ -198,16 +256,48 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
                     manifest.outputKind = .singleFrame
                     try repository.appendStrip(image: fallback, to: &manifest)
                 }
-            } catch { finalReason = error.localizedDescription }
+            } catch {
+                manifest.diagnostics?.recordStorageFailure(); finalReason = error.localizedDescription
+            }
         }
-        manifest.finalizeCapture(reason: finalReason, partial: partial)
+        manifest.finalizeCapture(reason: finalReason, partial: finalPartial)
         var persistenceError: String?
-        do { try repository.saveManifest(manifest) }
-        catch { persistenceError = error.localizedDescription }
+        do { try measure(.manifestWrite) { try repository.saveManifest(manifest) } }
+        catch {
+            persistenceError = error.localizedDescription
+            manifest.diagnostics?.recordStorageFailure()
+            manifest.status = .partial; manifest.stopReason = error.localizedDescription
+        }
         let result = ScreenCaptureKit27Outcome(manifest: manifest, persistenceError: persistenceError)
         outcome = result; pipeline = nil; imageContext.clearCaches(); lease = nil
         onFinish(result)
         return result
     }
+    private func measure<T>(_ stage: CaptureProcessingStage, _ operation: () throws -> T) rethrows -> T {
+        let start = ProcessInfo.processInfo.systemUptime
+        defer { adapterTimings.record(stage, seconds: ProcessInfo.processInfo.systemUptime - start) }
+        return try operation()
+    }
+
+    private func refreshDiagnostics(stage: String? = nil) {
+        let cause = manifest.diagnostics?.terminationCause
+        let lastStage = stage ?? manifest.diagnostics?.lastStage
+        let pipelineTimings = pipeline?.diagnostics.stageTimings ?? manifest.diagnostics?.stageTimings
+        var stats = pipeline?.diagnostics ?? manifest.diagnostics ?? .init()
+        stats.stageTimings = .combined(pipeline: pipelineTimings, adapter: adapterTimings)
+        stats.skippedSamples = skippedSamples; stats.maximumProcessingMilliseconds = maximumProcessingMilliseconds
+        stats.lifecycleState = lifecycle.state.rawValue
+        stats.pauseCount = lifecycle.pauseCount; stats.resumeCount = lifecycle.resumeCount
+        stats.recoveredResumeCount = lifecycle.recoveredResumeCount; stats.terminationCause = cause
+        if let lastStage { stats.lastStage = lastStage }
+        manifest.diagnostics = stats
+    }
+
+    private func persistLifecycleSnapshot() {
+        manifest.updatedAt = Date()
+        do { try measure(.manifestWrite) { try repository.saveManifest(manifest) } }
+        catch { refreshDiagnostics(stage: "storage") }
+    }
+
 }
 #endif

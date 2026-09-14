@@ -131,6 +131,8 @@ public struct StreamStitcher: Sendable {
     public private(set) var contentOffset = 0
     public private(set) var earliestOffset = 0
     public private(set) var furthestOffset = 0
+    /// Numeric evidence from this ingest only; no additional frame is retained.
+    public private(set) var lastForegroundRegistration: ForegroundMotionRegistration.Result?
     public var referenceCount: Int { references.count }
     /// Internal accounting for bounded-memory regression tests.
     var cachedDetailRowCount: Int { references.reduce(0) { $0 + $1.detailSpans.count } }
@@ -145,9 +147,11 @@ public struct StreamStitcher: Sendable {
         contentOffset = 0
         earliestOffset = 0
         furthestOffset = 0
+        lastForegroundRegistration = nil
     }
 
     public mutating func ingest(_ frame: GrayFrame) -> StitchDecision {
+        lastForegroundRegistration = nil
         guard validConfiguration(for: frame) else { return reject(.invalidConfiguration) }
         let bodyHeight = frame.height - configuration.topInset - configuration.bottomInset
         guard let latest = references.last else {
@@ -168,8 +172,50 @@ public struct StreamStitcher: Sendable {
         let maximumShift = bodyHeight - overlap
         let currentDetailSpans = detailSpans(for: frame)
         var refined: [Candidate] = []
+        var sawStationaryLayer = false
+        var foregroundConfidence: Double?
 
-        for (referenceIndex, reference) in references.enumerated() {
+        for referenceIndex in references.indices.reversed() {
+            let reference = references[referenceIndex]
+            let previousForegroundEvidence = lastForegroundRegistration
+            let foreground = ForegroundMotionRegistration.analyze(reference: reference.frame, current: frame,
+                                                                    configuration: configuration)
+            if foreground.status != .notLayered || !sawStationaryLayer {
+                lastForegroundRegistration = foreground
+            }
+            if foreground.status == .matched, let shift = foreground.displacement {
+                // The stationary layer cannot outvote verified foreground with
+                // a zero/one-pixel whole-screen match. Latest trusted overlap
+                // suffices; older references remain available after rejections.
+                refined = [.init(offset: reference.offset + shift, shift: shift, referenceIndex: referenceIndex,
+                                 error: (1 - foreground.confidence) * configuration.maximumMeanAbsoluteError,
+                                 hasDistributedDetail: true)]
+                foregroundConfidence = foreground.confidence
+                break
+            }
+            if foreground.status == .rejected {
+                // An older viewport can have no usable overlap even though a
+                // newer reference already explains every overlapping pixel.
+                // Keep its full candidate set (including ambiguity rivals);
+                // an old layered rejection must not erase that exact proof.
+                if refined.contains(where: { candidate in
+                    candidate.shift != 0 && exactOverlap(references[candidate.referenceIndex].frame, frame,
+                                                          shift: candidate.shift)
+                }) {
+                    lastForegroundRegistration = previousForegroundEvidence
+                    continue
+                }
+                sawStationaryLayer = true
+                refined.removeAll()
+                continue
+            }
+            if foreground.status == .unchanged {
+                refined = [.init(offset: reference.offset, shift: 0, referenceIndex: referenceIndex,
+                                 error: 0, hasDistributedDetail: true)]
+                foregroundConfidence = 1
+                break
+            }
+            if sawStationaryLayer { continue }
             var coarse: [Candidate] = []
             coarse.reserveCapacity(maximumShift * 2 + 1)
             // Search every integer displacement; coarse *spatial* sampling avoids
@@ -191,6 +237,7 @@ public struct StreamStitcher: Sendable {
             }
         }
 
+        if refined.isEmpty && sawStationaryLayer { return reject(.ambiguous) }
         refined.sort(by: candidateOrder)
         guard let best = refined.first,
               best.error <= configuration.maximumMeanAbsoluteError else {
@@ -209,7 +256,7 @@ public struct StreamStitcher: Sendable {
 
         let quality = max(0, 1 - best.error / configuration.maximumMeanAbsoluteError)
         let separation = min(1, margin / (configuration.ambiguityMargin * 3))
-        let confidence = max(0, min(1, 0.65 * quality + 0.35 * separation))
+        let confidence = foregroundConfidence ?? max(0, min(1, 0.65 * quality + 0.35 * separation))
         let previousOffset = contentOffset
         let oldEarliest = earliestOffset
         let oldFurthest = furthestOffset
@@ -265,6 +312,16 @@ public struct StreamStitcher: Sendable {
         let start = configuration.topInset * a.width
         let end = (a.height - configuration.bottomInset) * a.width
         return a.pixels[start..<end].elementsEqual(b.pixels[start..<end])
+    }
+
+    private func exactOverlap(_ a: GrayFrame, _ b: GrayFrame, shift: Int) -> Bool {
+        let bodyHeight = a.height - configuration.topInset - configuration.bottomInset
+        let overlap = bodyHeight - abs(shift)
+        guard overlap > 0 else { return false }
+        let startA = (configuration.topInset + max(shift, 0)) * a.width
+        let startB = (configuration.topInset + max(-shift, 0)) * b.width
+        return a.pixels[startA..<(startA + overlap * a.width)]
+            .elementsEqual(b.pixels[startB..<(startB + overlap * b.width)])
     }
 
     private func detailSpans(for frame: GrayFrame) -> [Range<Int>?] {

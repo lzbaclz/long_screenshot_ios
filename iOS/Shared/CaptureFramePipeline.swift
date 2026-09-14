@@ -51,9 +51,12 @@ final class CaptureFramePipeline {
     private(set) var provisionalFrame: CaptureStrip?
     private var candidateAnalysis: GrayFrame?
     private var armingRejections = 0
+    private var rejectedSceneAnalysis: GrayFrame?
     private var wasRejected = false
+    private var measuredOtherSeconds = 0.0
     private(set) var hasStarted = false
     private(set) var diagnostics = CaptureDiagnostics()
+    var hasReference: Bool { hasStarted || candidateAnalysis != nil }
     private var automaticallyFindRegion: Bool { configuration.topInset == 0 && configuration.bottomInset == 0 }
 
     init(configuration: AlignmentConfiguration, repository: CaptureSessionRepository? = nil, sessionID: UUID? = nil) {
@@ -64,7 +67,14 @@ final class CaptureFramePipeline {
 
     deinit { clearCandidate() }
 
-    func ingest(_ analysis: GrayFrame, makeImage: () throws -> CGImage) throws -> CaptureFrameResult {
+    func ingest(_ analysis: GrayFrame, allowProvisionalReplacement: Bool = true,
+                makeImage: () throws -> CGImage) throws -> CaptureFrameResult {
+        let began = ProcessInfo.processInfo.systemUptime
+        let excludedBefore = measuredOtherSeconds
+        defer {
+            let elapsed = ProcessInfo.processInfo.systemUptime - began
+            recordTiming(.alignment, seconds: max(0, elapsed - (measuredOtherSeconds - excludedBefore)))
+        }
         diagnostics.observedFrames += 1
         if candidateAnalysis == nil && !hasStarted {
             return try arm(analysis, replaced: false, makeImage: makeImage)
@@ -77,7 +87,51 @@ final class CaptureFramePipeline {
             ? StitchDecision(status: .rejected, sourceRows: nil, contentOffset: 0, furthestOffset: 0,
                              confidence: 0, rejection: .insufficientOverlap)
             : updated.ingest(analysis)
-        if automaticArming {
+        if !automaticArming {
+            if let foreground = updated.lastForegroundRegistration {
+                diagnostics.foregroundStatus = foreground.status.rawValue
+                diagnostics.foregroundCandidateCount = foreground.candidateCount
+                diagnostics.foregroundSupportCount = foreground.supportCount
+            } else {
+                diagnostics.foregroundStatus = decision.status == .unchanged ? "unchanged" : nil
+                diagnostics.foregroundCandidateCount = 0; diagnostics.foregroundSupportCount = 0
+            }
+        }
+        var verifiedForegroundStart = false
+        if automaticArming, let reference = candidateAnalysis {
+            let foreground = measure(.foregroundRegistration) {
+                ForegroundMotionRegistration.analyze(reference: reference, current: analysis, configuration: configuration)
+            }
+            diagnostics.foregroundStatus = foreground.status.rawValue
+            diagnostics.foregroundCandidateCount = foreground.candidateCount
+            diagnostics.foregroundSupportCount = foreground.supportCount
+            switch foreground.status {
+            case .matched:
+                armingRejections = 0; rejectedSceneAnalysis = nil
+                diagnostics.regionAttempts += 1
+                guard let displacement = foreground.displacement, let insets = foreground.matchingInsets,
+                      let verified = verifyStart(analysis, displacement: displacement, preferredInsets: insets) else {
+                    return reject(arming: true, region: true)
+                }
+                updated = verified.stitcher; decision = verified.decision
+                effectiveConfiguration = verified.configuration
+                verifiedForegroundStart = true
+            case .rejected:
+                // Failed moving foreground is not a new anchor. A settled,
+                // identical replacement scene may become one only after several
+                // samples, before stitching and outside resume recovery.
+                if let replacement = try stableSceneReplacement(analysis,
+                    allowed: allowProvisionalReplacement, makeImage: makeImage) { return replacement }
+                let rejected = reject(arming: true, region: false)
+                diagnostics.lastStage = "foreground"
+                return rejected
+            case .unchanged:
+                armingRejections = 0; rejectedSceneAnalysis = nil
+                return .init(status: .unchanged, strips: [], isArming: true)
+            case .notLayered: break
+            }
+        }
+        if automaticArming && !verifiedForegroundStart {
             var hypotheses: [StitchDecision] = []
             var checkedOffsets: Set<Int> = []
             var verifiedOffsets: [Int: VerifiedStart] = [:]
@@ -98,16 +152,20 @@ final class CaptureFramePipeline {
                 // Only offsets independently replayed in a moving region may
                 // vote or conflict; raw probe guesses never authorize a join.
                 let offsets = Set(accepted.map { $0.decision.contentOffset })
-                if offsets.count > 1 { return reject(arming: true, region: true) }
+                if offsets.count > 1 {
+                    armingRejections = 0; rejectedSceneAnalysis = nil
+                    return reject(arming: true, region: true)
+                }
                 if accepted.count >= 2 { break }
             }
             if let verified = accepted.first {
                 updated = verified.stitcher; decision = verified.decision
                 effectiveConfiguration = verified.configuration
             } else if !hypotheses.isEmpty, hypotheses.allSatisfy({ $0.status == .unchanged }) {
-                armingRejections = 0
+                armingRejections = 0; rejectedSceneAnalysis = nil
                 return .init(status: .unchanged, strips: [], isArming: true)
             } else if !checkedOffsets.isEmpty {
+                armingRejections = 0; rejectedSceneAnalysis = nil
                 // Preserve the original frame while there is a motion
                 // hypothesis whose region is still uncertain.
                 return reject(arming: true, region: true)
@@ -117,18 +175,11 @@ final class CaptureFramePipeline {
             // scene-replacement path, with its visible starting-point warning.
         }
         if decision.status == .rejected {
-            if !hasStarted {
-                armingRejections += 1
-                // Ignore isolated countdown/loading/transition frames. A new
-                // scene must persist through several admitted samples before
-                // replacing the provisional starting point.
-                if armingRejections >= 3 {
-                    return try arm(analysis, replaced: true, makeImage: makeImage)
-                }
-            }
+            if !hasStarted, let replacement = try stableSceneReplacement(analysis,
+                allowed: allowProvisionalReplacement, makeImage: makeImage) { return replacement }
             return reject(arming: !hasStarted, region: false)
         }
-        armingRejections = 0
+        armingRejections = 0; rejectedSceneAnalysis = nil
         if decision.status == .unchanged {
             if hasStarted { stitcher = updated }
             recoveredIfNeeded()
@@ -149,7 +200,7 @@ final class CaptureFramePipeline {
                                 fullImage: automaticallyFindRegion ? candidateImage : nil,
                                 topInset: region.topInset, bottomInset: region.bottomInset, isInitial: true))
         }
-        let image = try makeImage()
+        let image = try measure(.frameRendering, makeImage)
         guard image.height == analysis.height,
               let added = image.cropping(to: CGRect(x: 0, y: rows.lowerBound, width: image.width, height: rows.count))
         else { throw CaptureStorageError.imageEncodingFailed }
@@ -177,17 +228,23 @@ final class CaptureFramePipeline {
         let url: URL
         if let repository = candidateRepository, let sessionID = candidateSessionID {
             let candidate = try autoreleasepool {
-                try repository.stageProvisionalFrame(image: makeImage(), sessionID: sessionID)
+                let image = try measure(.frameRendering, makeImage)
+                return try measure(.provisionalWrite) {
+                    try repository.stageProvisionalFrame(image: image, sessionID: sessionID)
+                }
             }
             provisionalFrame = candidate
             url = try repository.stripURL(candidate, sessionID: sessionID)
         } else {
             url = FileManager.default.temporaryDirectory.appendingPathComponent("Longlet-Candidate-\(UUID().uuidString).png")
-            try autoreleasepool { try CaptureSessionRepository.writeImage(makeImage(), to: url, format: .png) }
+            try autoreleasepool {
+                let image = try measure(.frameRendering, makeImage)
+                try measure(.provisionalWrite) { try CaptureSessionRepository.writeImage(image, to: url, format: .png) }
+            }
         }
         candidateURL = url
         if candidateRepository == nil, let oldURL { try? FileManager.default.removeItem(at: oldURL) }
-        candidateAnalysis = analysis; armingRejections = 0
+        candidateAnalysis = analysis; armingRejections = 0; rejectedSceneAnalysis = nil
         stitcher = StreamStitcher(configuration: configuration); _ = stitcher.ingest(analysis)
         let windows = [
             (analysis.height / 5, analysis.height / 5),
@@ -207,16 +264,30 @@ final class CaptureFramePipeline {
         return .init(status: .started, strips: [], isArming: true, replacedProvisionalStart: replaced)
     }
 
+    private func stableSceneReplacement(_ analysis: GrayFrame, allowed: Bool,
+                                        makeImage: () throws -> CGImage) throws -> CaptureFrameResult? {
+        guard allowed else { armingRejections = 0; rejectedSceneAnalysis = nil; return nil }
+        if let previous = rejectedSceneAnalysis, previous.width == analysis.width, previous.height == analysis.height,
+           previous.pixels.elementsEqual(analysis.pixels) {
+            armingRejections = min(3, armingRejections + 1)
+        } else {
+            rejectedSceneAnalysis = analysis; armingRejections = 1
+        }
+        guard armingRejections >= 3 else { return nil }
+        return try arm(analysis, replaced: true, makeImage: makeImage)
+    }
+
     private struct VerifiedStart {
         let stitcher: StreamStitcher
         let decision: StitchDecision
         let configuration: AlignmentConfiguration
     }
 
-    private func verifyStart(_ analysis: GrayFrame, displacement: Int) -> VerifiedStart? {
+    private func verifyStart(_ analysis: GrayFrame, displacement: Int,
+                             preferredInsets: FixedRegionDetector.Insets? = nil) -> VerifiedStart? {
         guard let candidateAnalysis else { return nil }
-        let candidates = FixedRegionDetector.candidates(reference: candidateAnalysis, current: analysis,
-                                                        displacement: displacement)
+        let candidates = preferredInsets.map { [$0] }
+            ?? FixedRegionDetector.candidates(reference: candidateAnalysis, current: analysis, displacement: displacement)
         for insets in candidates {
             var region = configuration
             region.topInset = insets.top; region.bottomInset = insets.bottom
@@ -231,10 +302,30 @@ final class CaptureFramePipeline {
     }
 
     private func loadCandidate() -> CGImage? {
-        guard let candidateURL,
-              let source = CGImageSourceCreateWithURL(candidateURL as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0,
-            [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        measure(.provisionalRead) {
+            guard let candidateURL,
+                  let source = CGImageSourceCreateWithURL(candidateURL as CFURL, nil) else {
+                diagnostics.lastStage = "provisionalRead"; return nil
+            }
+            return CGImageSourceCreateImageAtIndex(source, 0,
+                [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        }
+    }
+
+    private func measure<T>(_ stage: CaptureProcessingStage, _ operation: () throws -> T) rethrows -> T {
+        let start = ProcessInfo.processInfo.systemUptime
+        defer {
+            let elapsed = ProcessInfo.processInfo.systemUptime - start
+            measuredOtherSeconds += elapsed
+            recordTiming(stage, seconds: elapsed)
+        }
+        do { return try operation() }
+        catch { diagnostics.lastStage = stage.rawValue; throw error }
+    }
+
+    private func recordTiming(_ stage: CaptureProcessingStage, seconds: Double) {
+        var timings = diagnostics.stageTimings ?? .init()
+        timings.record(stage, seconds: seconds); diagnostics.stageTimings = timings
     }
 
     /// Call only after the corresponding repository transaction has succeeded.

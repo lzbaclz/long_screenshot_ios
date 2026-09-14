@@ -132,10 +132,16 @@ final class BidirectionalAcceptanceTests: XCTestCase {
         var manifest = try repository.createSession(configuration: .init())
         let pipeline = CaptureFramePipeline(configuration: automatic ? .init() : .init(topInset: top, bottomInset: bottom),
                                             repository: repository, sessionID: manifest.id)
+        var reviewFrames: [GrayFrame] = []
+        var reviewTrace: [[String: Any]] = []
         for (index, offset) in offsets.enumerated() {
             let viewport = try makeViewport(document, offset: offset, clock: index)
             let gray = try analysis(viewport)
             let result = try pipeline.ingest(gray) { viewport }
+            reviewFrames.append(gray)
+            reviewTrace.append(["index": index, "sourceOffset": offset, "status": String(describing: result.status),
+                                "topInset": pipeline.effectiveConfiguration.topInset,
+                                "bottomInset": pipeline.effectiveConfiguration.bottomInset])
             if !automatic { XCTAssertNotEqual(result.status, .rejected, "frame \(index), position \(offset)") }
             _ = try repository.commit(result, maximumBodyHeight: 6_000, to: &manifest)
             if !result.strips.isEmpty { pipeline.confirmCommit() }
@@ -144,7 +150,19 @@ final class BidirectionalAcceptanceTests: XCTestCase {
         manifest.status = .completed
         try repository.saveManifest(manifest)
         let output = try CaptureImageRenderer(repository: repository).export(sessionID: manifest.id, format: .png)
-        return try XCTUnwrap(UIImage(contentsOfFile: output.path)?.cgImage)
+        let actual = try XCTUnwrap(UIImage(contentsOfFile: output.path)?.cgImage)
+        let expectedHeight = bodyHeight + (automatic ? top + bottom : 0) + offsets.max()! - offsets.min()!
+        if actual.height != expectedHeight {
+            let trace = XCTAttachment(data: try JSONSerialization.data(withJSONObject: reviewTrace, options: [.prettyPrinted]),
+                                      uniformTypeIdentifier: "public.json")
+            trace.name = "independent-document-trace.json"; trace.lifetime = .keepAlways; add(trace)
+            for (index, gray) in reviewFrames.enumerated() {
+                let attachment = XCTAttachment(data: Data(gray.pixels), uniformTypeIdentifier: "public.data")
+                attachment.name = String(format: "review-gray-%dx%d-%02d.bin", gray.width, gray.height, index)
+                attachment.lifetime = .keepAlways; add(attachment)
+            }
+        }
+        return actual
     }
 
     private func makeDocument(chat: Bool) -> CGImage {

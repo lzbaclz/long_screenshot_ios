@@ -45,6 +45,12 @@ public enum FixedRegionDetector {
         if displacement < 0 {
             return candidates(reference: current, current: reference, displacement: -displacement)
         }
+        let foreground = ForegroundMotionRegistration.analyze(reference: reference, current: current)
+        if foreground.status == .matched {
+            guard foreground.displacement == displacement, let insets = foreground.matchingInsets else { return [] }
+            return [insets]
+        }
+        if foreground.status == .rejected { return [] }
         if case .resolved(let exact) = resolve(reference: reference, current: current,
                                                downwardDisplacement: displacement) {
             return [exact]

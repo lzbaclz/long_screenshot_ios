@@ -232,6 +232,23 @@ final class CaptureFramePipelineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: candidateURL.path))
     }
 
+    func testChangingRejectedFramesNeverReplaceTheProvisionalStartingImage() throws {
+        let pipeline = CaptureFramePipeline(configuration: .init())
+        let original = scene(seed: 17_123)
+        _ = try feed(pipeline, source: original, offset: 0)
+        for seed in UInt64(20_000)..<20_008 {
+            let gray = try frame(scene(seed: seed), offset: 0)
+            let result = try pipeline.ingest(gray) {
+                XCTFail("Changing unmatched scenes must not be rendered as new starting images")
+                return self.image(gray)
+            }
+            XCTAssertTrue(result.strips.isEmpty)
+            XCTAssertFalse(result.replacedProvisionalStart)
+        }
+        XCTAssertEqual(pipeline.diagnostics.provisionalReplacements, 0)
+        XCTAssertEqual(pixels(try XCTUnwrap(pipeline.takeSingleFrameFallback())), Array(original.prefix(120 * 48)))
+    }
+
     private func feed(_ pipeline: CaptureFramePipeline, source: [UInt8], offset: Int) throws -> CaptureFrameResult {
         let gray = try frame(source, offset: offset)
         return try pipeline.ingest(gray) { self.image(gray) }
