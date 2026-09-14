@@ -15,7 +15,7 @@ final class ScrollCaptureUITests: XCTestCase {
         XCTAssertTrue(element("capture.simulatorNotice").waitForExistence(timeout: 15))
         attachScreenshot("home")
         app.buttons["home.guide"].tap()
-        XCTAssertTrue(app.staticTexts["切到目标应用，慢慢向下滑"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["切到目标应用，上下自然滑动"].waitForExistence(timeout: 5))
         attachScreenshot("guide")
         app.navigationBars["使用指南"].buttons["完成"].tap()
         XCTAssertTrue(app.buttons["home.settings"].exists)
@@ -51,17 +51,42 @@ final class ScrollCaptureUITests: XCTestCase {
         app.navigationBars["编辑长图"].buttons["取消"].tap()
     }
 
-    func testSettingsPurchaseUnavailableAndPrivacy() {
+    func testSettingsShowsFiniteBetaAllowanceAndPrivacy() {
         app.buttons["home.settings"].tap()
         XCTAssertTrue(app.buttons["settings.idleStop"].waitForExistence(timeout: 5))
         app.swipeUp()
-        app.buttons["settings.upgrade"].tap()
-        XCTAssertTrue(element("purchase.unavailable").waitForExistence(timeout: 10))
+        let remaining = element("settings.remainingExports")
+        XCTAssertTrue(remaining.waitForExistence(timeout: 5))
+        XCTAssertTrue(remaining.label.contains("/ 50"), "Beta settings must show a finite 50-work allowance")
+        XCTAssertFalse(app.buttons["settings.upgrade"].exists)
         XCTAssertTrue(app.buttons["purchase.restore"].exists)
-        attachScreenshot("purchase-unavailable")
-        app.navigationBars["无限导出"].buttons["完成"].tap()
+        attachScreenshot("settings-beta-fifty")
         app.buttons["settings.privacy"].tap()
         XCTAssertTrue(app.staticTexts["只在你的设备上处理"].waitForExistence(timeout: 5))
+    }
+
+    func testEmptyLegacyCaptureShowsFailureWithoutExportOrEditing() {
+        app.terminate()
+        app.launchArguments.append("--demo-empty-capture")
+        app.launch()
+        let row = app.buttons["capture.row.D3E00000-0000-4000-8000-000000000004"]
+        for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("未捕捉到可用画面"))
+        XCTAssertFalse(row.label.contains("0 × 0"))
+        XCTAssertFalse(row.label.contains("部分内容已保留"))
+        row.tap()
+        XCTAssertTrue(element("detail.noImage").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["画面无法可靠衔接，未保存可用画面。请让前后画面保留重叠，或调整捕捉区域后重试。"].exists)
+        XCTAssertFalse(app.buttons["detail.savePhotos"].exists)
+        XCTAssertFalse(app.buttons["detail.share"].exists)
+        XCTAssertFalse(app.buttons["detail.edit"].exists)
+        XCTAssertTrue(app.buttons["detail.delete"].exists)
+        attachScreenshot("empty-capture-failure")
+        app.buttons["返回首页"].tap()
+        XCTAssertTrue(app.buttons["home.settings"].waitForExistence(timeout: 5))
+        // The failure remains available; displaying it must never delete its record.
+        XCTAssertTrue(row.exists)
     }
 
     func testRecoverableDraftAndConfirmedDeletion() {
@@ -140,7 +165,7 @@ final class ScrollCaptureUITests: XCTestCase {
     }
 
     private func openFirstCompletedCapture() {
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "capture.row.")).firstMatch
+        let row = app.buttons["capture.row.D3E00000-0000-4000-8000-000000000002"]
         for _ in 0..<3 where !row.isHittable { app.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()

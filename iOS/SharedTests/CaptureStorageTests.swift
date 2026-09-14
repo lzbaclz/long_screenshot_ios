@@ -139,6 +139,76 @@ final class CaptureStorageTests: XCTestCase {
         XCTAssertEqual(pixel(result, x: 6, y: 30), [255, 0, 0, 255])
     }
 
+    func testEmptyTerminalStateKeepsStorageFailureAndNeverClaimsSavedContent() {
+        var session = CaptureSessionManifest()
+        let failure = CaptureStorageError.imageEncodingFailed.localizedDescription
+        session.finalizeCapture(reason: failure, partial: true)
+        XCTAssertEqual(session.status, .partial)
+        XCTAssertFalse(session.hasImage)
+        XCTAssertTrue(session.stopReason?.hasPrefix("未写入可用画面。") == true)
+        XCTAssertTrue(session.stopReason?.contains(failure) == true)
+        session.finalizeCapture(reason: "捕捉已暂停，已保留成功捕捉的部分。请重新开始下一段。", partial: true)
+        XCTAssertFalse(session.stopReason?.contains("已保留") == true)
+    }
+
+    func testSchemaOneBeforeOptionalMetadataRemainsReadable() throws {
+        let session = try repository.createSession(configuration: .init())
+        let encoder = JSONEncoder()
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(session)) as? [String: Any])
+        for key in ["outputKind", "diagnostics", "leadingEdgeStripID", "trailingEdgeStripID", "provisionalFrame"] { json.removeValue(forKey: key) }
+        let legacy = try JSONDecoder().decode(CaptureSessionManifest.self,
+                                              from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(legacy.schemaVersion, 1)
+        XCTAssertFalse(legacy.hasImage)
+        XCTAssertFalse(legacy.isSingleFrameFallback)
+    }
+
+    func testPrependQuotaRetainsRowsNearestExistingSeam() throws {
+        var session = try repository.createSession(configuration: .init())
+        try repository.appendStrip(image: solid(.blue, width: 20, height: 50), to: &session)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+        let head = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 30), format: format).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+            UIColor.green.setFill(); context.fill(CGRect(x: 0, y: 20, width: 20, height: 10))
+        }.cgImage!
+        let result = CaptureFrameResult(status: .advanced,
+            strips: [.init(image: head, sourceTopPixel: 7, placement: .prepend)], isArming: false)
+        XCTAssertTrue(try repository.commit(result, maximumBodyHeight: 60, to: &session))
+        XCTAssertEqual(session.strips.map(\.pixelHeight), [10, 50])
+        XCTAssertEqual(session.strips[0].sourceTopPixel, 27)
+        session.status = .completed; try repository.saveManifest(session)
+        let output = try CaptureImageRenderer(repository: repository).export(sessionID: session.id)
+        let rendered = try XCTUnwrap(UIImage(contentsOfFile: output.path)?.cgImage)
+        XCTAssertEqual(pixel(rendered, x: 10, y: 5), [0, 255, 0, 255])
+        XCTAssertEqual(pixel(rendered, x: 10, y: 15), [0, 0, 255, 255])
+    }
+
+    func testEdgeAndBodyTransactionFailureKeepsPriorCompleteManifest() throws {
+        var session = try repository.createSession(configuration: .init())
+        let full = solid(.red, width: 20, height: 80)
+        let body = try XCTUnwrap(full.cropping(to: CGRect(x: 0, y: 10, width: 20, height: 60)))
+        let start = CaptureFrameResult(status: .advanced,
+            strips: [.init(image: body, sourceTopPixel: 10, fullImage: full,
+                           topInset: 10, bottomInset: 10, isInitial: true)], isArming: false)
+        try repository.commit(start, maximumBodyHeight: 500, to: &session)
+        let before = session
+        let originalURLs = try before.strips.map { try repository.stripURL($0, sessionID: before.id) }
+        let originalData = try originalURLs.map { try Data(contentsOf: $0) }
+        // First staged strip succeeds; the second has inconsistent width.
+        let failed = CaptureFrameResult(status: .advanced, strips: [
+            .init(image: solid(.blue, width: 20, height: 5), sourceTopPixel: 65,
+                  fullImage: full, topInset: 10, bottomInset: 10),
+            .init(image: solid(.blue, width: 21, height: 5), sourceTopPixel: 0)
+        ], isArming: false)
+        XCTAssertThrowsError(try repository.commit(failed, maximumBodyHeight: 500, to: &session))
+        XCTAssertEqual(session, before)
+        XCTAssertEqual(try repository.loadSession(id: session.id), before)
+        XCTAssertEqual(try originalURLs.map { try Data(contentsOf: $0) }, originalData)
+        let pngs = try FileManager.default.contentsOfDirectory(at: repository.sessionDirectory(id: session.id),
+                                                              includingPropertiesForKeys: nil).filter { $0.pathExtension == "png" }
+        XCTAssertEqual(pngs.count, before.strips.count)
+    }
+
     private func solid(_ color: UIColor, width: Int, height: Int) -> CGImage {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
         return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in

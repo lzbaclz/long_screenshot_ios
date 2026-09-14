@@ -22,7 +22,7 @@
 
 ## 中文介绍草案
 
-续页把连续滚动的内容整理成一张长图。通过 iOS 系统开始屏幕广播后，切到目标内容，在起点稍作停留，再缓慢向下滑动。结束后返回续页，检查、编辑并保存结果。
+续页把连续滚动的内容整理成一张长图。通过 iOS 系统开始屏幕广播后，切到目标内容，在起点稍作停留，再上下滑动。新内容按页面阅读顺序补到长图两端，已捕捉的范围不重复。结束后返回续页，检查、编辑并保存结果。
 
 - 直接处理屏幕画面，无需先从相册选择完整录屏视频。
 - 手动停止，或选择停止滑动 5 秒、10 秒后结束。
@@ -73,23 +73,26 @@ Public, non-private test article URL: [fill in and verify before submission]
 3. From Control Center, press and hold Screen Recording, choose Longlet,
    and start the broadcast. Dismiss Control Center and pause on the starting view.
    Alternatively, start from Longlet's system picker, then switch to Safari.
-4. Scroll down slowly for several overlapping screens.
+4. Scroll in either direction for several overlapping screens, including a short reversal.
 5. Stop using the iOS capture indicator or Control Center. Return to Longlet.
 6. Open the result, check the first and last paragraphs, and test crop/redaction.
 7. Export PNG to Photos (add-only permission) or use the system share sheet.
 
-The extension holds a provisional starting frame until downward scrolling
+The extension holds a provisional starting frame until scrolling in either direction
 is confidently matched. A changed provisional start is disclosed in the result.
-Stopping without confirmed scrolling produces an explanatory empty draft.
+Stopping without confirmed scrolling preserves a single screen when available,
+clearly labelled as such; a record with no image is shown as a failed capture.
 Automatic stopping may show an iOS broadcast-ended notice even when a result exists.
 If protected or dynamically changing content cannot be matched, the app preserves
 the accepted section and explains the interruption.
 
-Purchases: Pro is a StoreKit non-consumable. Restore Purchases is on the upgrade page.
-Debug and TestFlight sandbox builds enable unlimited test exports, visibly labelled;
-this is testing behavior, not a hidden paid unlock. Production free allowance is
-three new successfully exported captures per week. In-app purchase sandbox paths
-are tested separately; see the attached verified purchase test evidence.
+This beta allows 50 new successfully exported works per ISO week, using the
+device's local time. Failed or cancelled exports do not count. Repeated exports
+of the same work do not count again, and upgrades keep the existing ledger.
+The allowance is explicit and does not depend on a TestFlight sandbox receipt.
+Restore Purchases remains in Settings for existing entitlements; new purchases
+are not offered in this beta. The commercial policy and real purchase testing
+will be decided separately before a formal App Store release.
 
 Support: chestnutlee23@163.com
 ```
@@ -98,9 +101,9 @@ Support: chestnutlee23@163.com
 
 ## TestFlight：What to Test
 
-**中文：** 请使用无私人信息的测试内容，分别从控制中心和应用内开始捕捉。停留在起点后慢速滚动，检查首尾、接缝和短距离回滑是否完整。再测试固定栏、手动/静止结束、照片权限拒绝、裁剪与遮挡、PNG/JPEG、分享取消及中断恢复。测试版不限导出次数；大图安全上限仍生效。反馈请注明版本、机型、系统、启动入口、重现步骤与结果，不发送私人聊天原图。本轮不把演示图、合成样本或一次成功当作全部场景验收。
+**中文：** 请使用无私人信息的测试内容，分别从控制中心和应用内开始捕捉。停留在起点后上下滚动，检查两端扩展、接缝和回滑是否完整。重点测试朋友圈式图文页面、固定栏、短暂加载、手动/静止结束、照片权限拒绝、裁剪与遮挡、PNG/JPEG、分享取消及中断恢复。测试版每周免费导出 50 个新作品，失败和取消不扣次数，同一作品重复导出不多扣；大图安全上限仍生效。失败时可展开记录的采集详情，反馈版本、机型、系统、启动入口、重现步骤和停止原因，不发送私人聊天原图。本轮不把演示图、合成样本或一次成功当作全部场景验收。
 
-**English:** Use test content without private information. Try starting from both Control Center and the in-app picker. Pause at the starting point, scroll slowly, and check the beginning, ending, seams and short backtracking. Test fixed headers, manual/idle stopping, denied Photos permission, cropping, redactions, PNG/JPEG, cancelled sharing and interruption recovery. Test builds have unlimited export counts; image safety limits remain. Include the build, device, iOS version, entry point, steps and result in feedback. Do not send unredacted private chats. Demo images and synthetic tests do not validate capture in other apps.
+**English:** Use test content without private information. Try both Control Center and the in-app picker. Pause at the starting point, then scroll in both directions and check both ends, seams and reversals. Focus on mixed photo/text feeds, fixed headers, brief loading, manual/idle stopping, denied Photos permission, cropping, redactions, PNG/JPEG, cancelled sharing and interruption recovery. This beta allows 50 new successful exports per week. Failures, cancellations and repeated exports of the same work do not consume more allowance; image safety limits remain. Expand capture details on a failed record and include the build, device, iOS version, entry point, steps and stop reason in feedback. Do not send unredacted private chats. Demo images and synthetic tests do not validate capture in other apps.
 
 ## 截图素材单与未完成项
 

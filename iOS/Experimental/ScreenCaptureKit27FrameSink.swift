@@ -28,7 +28,7 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
     private let startedUptime = ProcessInfo.processInfo.systemUptime
     private var lastFrameUptime = 0.0
     private var lastMotionUptime = 0.0
-    private var rejectedSince: Double?
+    private var continuity = CaptureContinuityPolicy()
     private var stoppedFrameUptime: Double?
     private var didMove = false
     private var initialOrientation: Int32?
@@ -115,60 +115,46 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
         let configuration = manifest.configuration
         let top = Int(Double(height) * configuration.captureTopInsetFraction)
         let bottom = Int(Double(height) * configuration.captureBottomInsetFraction)
-        if pipeline == nil { pipeline = .init(configuration: .init(topInset: top, bottomInset: bottom)) }
+        if pipeline == nil {
+            pipeline = .init(configuration: .init(topInset: top, bottomInset: bottom),
+                             repository: repository, sessionID: manifest.id)
+        }
         guard let pipeline else { return }
-        let gray = try grayFrame(source, width: min(144, width), height: height)
+        let gray = try CaptureFrameConversion.grayFrame(source, context: imageContext, width: min(144, width), height: height)
         let result = try pipeline.ingest(gray) {
             guard let image = imageContext.createCGImage(source, from: source.extent) else {
                 throw CaptureStorageError.imageEncodingFailed
             }
             return image
         }
+        manifest.provisionalFrame = pipeline.provisionalFrame
         if result.replacedProvisionalStart {
             manifest.startWarning = "画面变化后重新确定了起点，请检查图片开头是否完整。"
         }
-        if let warning = result.regionWarning { _ = finishOnQueue(reason: warning, partial: true); return }
+        manifest.diagnostics = pipeline.diagnostics
         if result.status == .rejected { registerRejection(now: now); return }
         if !result.isArming && (result.status == .advanced || result.status == .backtracked) {
             didMove = true; lastMotionUptime = now
         }
-        for pending in result.strips {
+        if !result.strips.isEmpty {
             let region = pipeline.effectiveConfiguration
             let maximumHeight = (height - region.topInset - region.bottomInset) * configuration.maximumScreenCount
-            let count = min(pending.image.height, max(0, maximumHeight - manifest.pixelHeight))
-            if count > 0 {
-                guard let image = pending.image.cropping(to: CGRect(x: 0, y: 0, width: width, height: count)) else {
-                    throw CaptureStorageError.imageEncodingFailed
-                }
-                try repository.appendStrip(image: image, sourceTopPixel: pending.sourceTopPixel, to: &manifest)
-            }
-            if manifest.pixelHeight >= maximumHeight {
+            let reachedLimit = try repository.commit(result, maximumBodyHeight: maximumHeight, to: &manifest)
+            pipeline.confirmCommit()
+            if reachedLimit {
                 _ = finishOnQueue(reason: "已达到设置的 \(configuration.maximumScreenCount) 屏上限。", partial: false)
                 return
             }
         }
-        rejectedSince = nil
-    }
-
-    private func grayFrame(_ source: CIImage, width: Int, height: Int) throws -> GrayFrame {
-        let resized = source.transformed(by: CGAffineTransform(scaleX: CGFloat(width) / source.extent.width,
-                                                               y: CGFloat(height) / source.extent.height))
-        guard let image = imageContext.createCGImage(resized, from: CGRect(x: 0, y: 0, width: width, height: height)),
-              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                      bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0),
-              let bytes = context.data else { throw CaptureStorageError.imageEncodingFailed }
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        return try GrayFrame(width: width, height: height,
-                             pixels: Array(UnsafeBufferPointer(start: bytes.assumingMemoryBound(to: UInt8.self),
-                                                               count: width * height)))
+        continuity.accept()
     }
 
     private func registerRejection(now: Double) {
         manifest.rejectedFrameCount += 1
-        if rejectedSince == nil { rejectedSince = now }
-        if now - (rejectedSince ?? now) >= 0.8 {
-            _ = finishOnQueue(reason: "画面无法可靠衔接，已保存连续部分。请降低滑动速度或调整捕捉区域后重试。", partial: true)
+        lastMotionUptime = now
+        if continuity.reject(at: now, hasStarted: pipeline?.hasStarted == true) {
+            manifest.diagnostics?.terminationCause = "continuity"
+            _ = finishOnQueue(reason: "画面暂时无法连续衔接，已保存已确认的连续长图。请降低滑动速度后重试。", partial: true)
         }
     }
 
@@ -192,7 +178,7 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
         if now - startedUptime >= manifest.configuration.maximumDurationSeconds {
             _ = finishOnQueue(reason: "已达到设置的时长上限。", partial: false); return
         }
-        if didMove, let idle = manifest.configuration.idleStopSeconds, now - lastMotionUptime >= idle {
+        if didMove, !continuity.isAwaitingBridge, let idle = manifest.configuration.idleStopSeconds, now - lastMotionUptime >= idle {
             _ = finishOnQueue(reason: "停止滑动 \(Int(idle)) 秒，已完成捕捉。", partial: false); return
         }
         manifest.updatedAt = Date()
@@ -203,10 +189,17 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
     private func finishOnQueue(reason: String, partial: Bool) -> ScreenCaptureKit27Outcome {
         if let outcome { return outcome }
         timer?.cancel(); timer = nil
-        manifest.status = partial || manifest.strips.isEmpty ? .partial : .completed
-        manifest.stopReason = manifest.strips.isEmpty && !partial
-            ? "未检测到可衔接的向下滚动。请停留在起点后缓慢向下滑动，再结束捕捉。" : reason
-        manifest.updatedAt = Date()
+        var finalReason = reason
+        if manifest.strips.isEmpty {
+            do {
+                let preserved = try repository.preserveProvisionalFrame(to: &manifest)
+                if !preserved, let fallback = pipeline?.takeSingleFrameFallback() {
+                    manifest.outputKind = .singleFrame
+                    try repository.appendStrip(image: fallback, to: &manifest)
+                }
+            } catch { finalReason = error.localizedDescription }
+        }
+        manifest.finalizeCapture(reason: finalReason, partial: partial)
         var persistenceError: String?
         do { try repository.saveManifest(manifest) }
         catch { persistenceError = error.localizedDescription }

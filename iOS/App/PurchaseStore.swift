@@ -2,39 +2,58 @@ import Foundation
 import StoreKit
 import Combine
 
+/// The beta allowance applies to successful exports of new works in each ISO week.
+/// A future commercial release must choose its policy explicitly.
+enum ExportQuotaPolicy: Equatable {
+    case beta(limit: Int)
+
+    static let current = Self.beta(limit: 50)
+
+    var limit: Int {
+        switch self {
+        case .beta(let limit): max(0, limit)
+        }
+    }
+}
+
 /// Quotas apply to successfully exported captures, never previews or cancelled shares.
 @MainActor
 final class PurchaseStore: ObservableObject {
     @Published private(set) var product: Product?
     @Published private(set) var hasPro = false
-    @Published private(set) var testingUnlimited = false
     @Published private(set) var isBusy = false
     @Published var message: String?
     @Published private var exports: [String: Date]
 
     private let defaults: UserDefaults
+    let quotaPolicy: ExportQuotaPolicy
+    private let calendar: Calendar
+    private let currentDate: () -> Date
     private let productID: String?
     private var updatesTask: Task<Void, Never>?
     private let quotaKey = "successfulCaptureExports.v1"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, quotaPolicy: ExportQuotaPolicy = .current,
+         calendar: Calendar = Calendar(identifier: .iso8601), currentDate: @escaping () -> Date = Date.init) {
         self.defaults = defaults
+        self.quotaPolicy = quotaPolicy
+        self.calendar = calendar
+        self.currentDate = currentDate
         productID = Bundle.main.object(forInfoDictionaryKey: "ProProductIdentifier") as? String
+        // Keep the original ledger, including exports from previous weeks and
+        // earlier app versions. This week's old three-export usage counts toward 50.
         exports = (defaults.dictionary(forKey: quotaKey) ?? [:]).compactMapValues { $0 as? Date }
-        #if DEBUG
-        testingUnlimited = true
-        #endif
     }
 
     deinit { updatesTask?.cancel() }
 
-    var unlimited: Bool { hasPro || testingUnlimited }
+    var unlimited: Bool { hasPro }
+    var exportLimit: Int { quotaPolicy.limit }
 
     var remainingExports: Int {
-        let calendar = Calendar(identifier: .iso8601)
-        guard let interval = calendar.dateInterval(of: .weekOfYear, for: Date()) else { return 0 }
-        let used = exports.values.filter { interval.contains($0) }.count
-        return max(0, 3 - used)
+        guard let interval = calendar.dateInterval(of: .weekOfYear, for: currentDate()) else { return 0 }
+        let used = exports.values.filter { $0 >= interval.start && $0 < interval.end }.count
+        return max(0, exportLimit - used)
     }
 
     func canExport(sessionID: UUID) -> Bool {
@@ -43,8 +62,13 @@ final class PurchaseStore: ObservableObject {
 
     func recordSuccessfulExport(sessionID: UUID) {
         guard exports[sessionID.uuidString] == nil else { return }
-        exports[sessionID.uuidString] = Date()
+        exports[sessionID.uuidString] = currentDate()
         defaults.set(exports, forKey: quotaKey)
+    }
+
+    func recordShareCompletion(sessionID: UUID, completed: Bool) {
+        guard completed else { return }
+        recordSuccessfulExport(sessionID: sessionID)
     }
 
     func start() async {
@@ -58,15 +82,7 @@ final class PurchaseStore: ObservableObject {
                 }
             }
         }
-        #if !DEBUG
-        if let result = try? await AppTransaction.shared,
-           case .verified(let transaction) = result,
-           transaction.environment == .sandbox {
-            testingUnlimited = true
-        }
-        #endif
         await refreshEntitlements()
-        await loadProduct()
     }
 
     func loadProduct() async {

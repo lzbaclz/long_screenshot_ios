@@ -20,6 +20,7 @@ final class PhotosPermissionUITests: XCTestCase {
     }
 
     func testDeniedPhotoAddPreservesPreviewAndSystemSharing() {
+        let allowanceBefore = remainingAllowance()
         let interruption = addUIInterruptionMonitor(withDescription: "Deny the actual system add-photos request") { [weak self] alert in
             let message = alert.label + " " + alert.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ")
             guard message.contains("照片") || message.localizedCaseInsensitiveContains("photo") else { return false }
@@ -72,6 +73,23 @@ final class PhotosPermissionUITests: XCTestCase {
         app.buttons["header.closeButton"].tap()
         XCTAssertTrue(element("detail.preview").waitForExistence(timeout: 5))
         attachScreenshot("photos-denied-original-still-available", app: app)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(remainingAllowance(), allowanceBefore,
+                       "Denied saves and canceled system sharing must preserve the actual weekly allowance")
+    }
+
+    private func remainingAllowance() -> String {
+        let settings = app.buttons["home.settings"]
+        for _ in 0..<4 where !settings.isHittable { app.swipeDown() }
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let remaining = element("settings.remainingExports")
+        for _ in 0..<3 where !remaining.isHittable { app.swipeUp() }
+        XCTAssertTrue(remaining.waitForExistence(timeout: 5))
+        let value = remaining.label
+        XCTAssertTrue(value.contains("/ 50"))
+        app.navigationBars["设置"].buttons["完成"].tap()
+        return value
     }
 
     private func element(_ identifier: String) -> XCUIElement {

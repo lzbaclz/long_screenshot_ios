@@ -16,7 +16,7 @@ struct CaptureGuideView: View {
                     Text("像平时一样滑动\n剩下的交给续页")
                         .font(.system(size: 29, weight: .bold))
                     step("01", title: "打开系统捕捉", detail: "回到首页，点按圆形捕捉按钮，在系统面板选择续页并点按“开始广播”。系统会倒计时并显示捕捉指示。", symbol: "record.circle")
-                    step("02", title: "切到目标应用，慢慢向下滑", detail: "先让希望保留的起点画面稳定，再从这里开始缓慢向下滑动。保持竖屏，让前后画面有重叠；等图片加载完成后再继续。", symbol: "hand.draw")
+                    step("02", title: "切到目标应用，上下自然滑动", detail: "先让希望保留的画面稳定，再向上或向下滑动，也可以回看已经经过的内容。保持竖屏，让前后画面有重叠；等图片加载完成后再继续。", symbol: "hand.draw")
                     step("03", title: "停止，长图就绪", detail: "点按屏幕顶部的系统捕捉指示结束，或返回续页点按停止。回到应用后即可裁剪、遮挡隐私和保存。", symbol: "checkmark.rectangle.stack")
                     PaperCard {
                         VStack(alignment: .leading, spacing: 12) {

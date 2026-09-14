@@ -41,10 +41,13 @@ final class CaptureLibrary: ObservableObject {
     }
 
     var activeSession: CaptureSessionManifest? { sessions.first { $0.status == .capturing } }
-    var completedSessions: [CaptureSessionManifest] { sessions.filter { $0.status == .completed } }
-    var draftSessions: [CaptureSessionManifest] {
-        sessions.filter { $0.status == .partial || $0.status == .interrupted }
+    var completedSessions: [CaptureSessionManifest] {
+        sessions.filter { $0.status == .completed && $0.hasImage && !$0.isSingleFrameFallback }
     }
+    var draftSessions: [CaptureSessionManifest] {
+        sessions.filter(\.isSavedPartialCapture)
+    }
+    var failedSessions: [CaptureSessionManifest] { sessions.filter(\.isFailedCapture) }
 
     func refresh() {
         guard let repository else { return }
@@ -109,13 +112,54 @@ final class CaptureLibrary: ObservableObject {
     enum LibraryError: Error { case unavailable }
 }
 
+extension CaptureDiagnostics {
+    var stageLabel: String {
+        switch lastStage {
+        case "starting": "等待屏幕画面"
+        case "arming": "等待目标页面稳定"
+        case "region": "确认滚动区域"
+        case "alignment": "尝试衔接画面"
+        case "stitching": "连续拼接画面"
+        case "frameConversion": "读取屏幕画面"
+        case "missingVideoFrame": "未收到可读取的屏幕画面"
+        case "provisionalImage": "暂存起始画面"
+        case "firstCommit": "首次保存连续画面"
+        case "storage": "写入图片"
+        default: "未记录"
+        }
+    }
+
+    var terminationLabel: String {
+        switch terminationCause {
+        case "manual": "手动停止"
+        case "systemPause", "paused": "系统暂停捕捉"
+        case "systemInterruption", "interrupted": "系统中断捕捉"
+        case "systemEnded": "系统结束捕捉"
+        case "processingError": "画面处理或保存失败"
+        case "geometry": "屏幕方向或尺寸改变"
+        case "duration": "达到捕捉时长上限"
+        case "idle": "达到静止停止时间"
+        case "continuity": "画面未能连续衔接"
+        case "screenLimit": "达到捕捉屏数上限"
+        default: "未记录"
+        }
+    }
+}
+
 extension CaptureSessionManifest {
+    var isFailedCapture: Bool { status != .capturing && !hasImage }
+    var isSavedPartialCapture: Bool {
+        hasImage && status != .capturing && (status != .completed || isSingleFrameFallback)
+    }
+
     var displayTitle: String {
         createdAt.formatted(.dateTime.month(.twoDigits).day(.twoDigits).hour().minute())
     }
 
     var stateLabel: String {
-        switch status {
+        if isFailedCapture { return "未捕捉到可用画面" }
+        if status != .capturing && isSingleFrameFallback { return "仅保留单屏" }
+        return switch status {
         case .capturing: "捕捉中"
         case .completed: startWarning == nil ? "已完成" : "请检查开头"
         case .partial: "部分内容已保留"
@@ -124,6 +168,7 @@ extension CaptureSessionManifest {
     }
 
     var noticeText: String? {
+        if isFailedCapture { return failureNotice }
         var notices: [String] = []
         if status == .partial || status == .interrupted {
             notices.append(stopReason ?? "捕捉中途停止，以下已保存内容可以继续编辑和导出。")
@@ -137,6 +182,7 @@ extension CaptureSessionManifest {
     }
 
     var localizedNoticeText: String? {
+        if isFailedCapture { return L10n.captureReason(failureNotice) }
         guard var notice = noticeText else { return nil }
         if let startWarning { notice = notice.replacingOccurrences(of: startWarning, with: "") }
         var lines = notice.components(separatedBy: "\n")
@@ -145,5 +191,29 @@ extension CaptureSessionManifest {
             .map(L10n.captureReason)
         if let startWarning { lines.append(L10n.captureReason(startWarning)) }
         return lines.joined(separator: "\n")
+    }
+
+    /// Earlier builds sometimes attached a "saved" notice to an empty manifest.
+    /// Correct the presentation without rewriting or deleting the original record.
+    private var failureNotice: String {
+        guard let stopReason, !stopReason.isEmpty else {
+            return "这次捕捉在保存画面前结束。请重新开始，切到目标应用后稍作停留，再上下滑动。"
+        }
+        switch stopReason {
+        case "捕捉意外中断，已保留最后一次成功写入的画面。", "捕捉意外中断，已保留画面。":
+            return "捕捉意外中断，未保存可用画面。请重新开始捕捉。"
+        case "捕捉已暂停，已保留成功捕捉的部分。请重新开始下一段。":
+            return "捕捉已暂停，未保存可用画面。请重新开始捕捉。"
+        case "屏幕方向改变，已保存旋转前的内容。请重新开始下一段。":
+            return "屏幕方向改变，未保存可用画面。请保持竖屏并重新开始捕捉。"
+        case "画面尺寸发生变化，已保存变化前的内容。":
+            return "画面尺寸发生变化，未保存可用画面。请重新开始捕捉。"
+        case "画面无法可靠衔接，已保存连续部分。请降低滑动速度或调整捕捉区域后重试。":
+            return "画面无法可靠衔接，未保存可用画面。请让前后画面保留重叠，或调整捕捉区域后重试。"
+        case "未检测到可衔接的向下滚动。请停留在起点后缓慢向下滑动，再结束捕捉。":
+            return "未检测到可衔接的滚动，未保存可用画面。请在目标应用稍作停留，再上下滑动后结束捕捉。"
+        default:
+            return stopReason
+        }
     }
 }

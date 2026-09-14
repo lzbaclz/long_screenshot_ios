@@ -58,18 +58,22 @@ final class StreamStitcherTests: XCTestCase {
         XCTAssertEqual(capturedRows, 160 + 150)
     }
 
-    func testScrollingAboveStartDoesNotPrependOrDuplicate() throws {
+    func testScrollingAboveStartPrependsOnlyUnseenHeadRows() throws {
         var stitcher = StreamStitcher()
         _ = stitcher.ingest(try frame(offset: 80))
         let back = stitcher.ingest(try frame(offset: 30))
-        XCTAssertEqual(back.status, .backtracked)
+        XCTAssertEqual(back.status, .advanced)
         XCTAssertEqual(back.contentOffset, -50)
+        XCTAssertEqual(back.earliestOffset, -50)
         XCTAssertEqual(back.furthestOffset, 0)
-        XCTAssertNil(back.sourceRows)
+        XCTAssertEqual(back.sourceRows, 0..<50)
+        XCTAssertEqual(back.placement, .prepend)
         let forward = stitcher.ingest(try frame(offset: 100))
         XCTAssertEqual(forward.status, .advanced)
         XCTAssertEqual(forward.contentOffset, 20)
         XCTAssertEqual(forward.sourceRows, 140..<160)
+        XCTAssertEqual(forward.placement, .append)
+        XCTAssertEqual(forward.earliestOffset, -50)
     }
 
     func testOverlargeJumpRejectsThenRecoversFromTrustedFrame() throws {
@@ -163,6 +167,7 @@ final class StreamStitcherTests: XCTestCase {
         stitcher.reset()
         XCTAssertEqual(stitcher.referenceCount, 0)
         XCTAssertEqual(stitcher.contentOffset, 0)
+        XCTAssertEqual(stitcher.earliestOffset, 0)
         XCTAssertEqual(stitcher.furthestOffset, 0)
         XCTAssertEqual(stitcher.ingest(try frame(offset: 42, width: 100)).status, .started)
     }
@@ -210,7 +215,11 @@ final class StreamStitcherTests: XCTestCase {
             let result = stitcher.ingest(input)
             XCTAssertNotEqual(result.status, .rejected)
             if let rows = result.sourceRows {
-                output.append(contentsOf: input.pixels[(rows.lowerBound * input.width)..<(rows.upperBound * input.width)])
+                let pixels = input.pixels[(rows.lowerBound * input.width)..<(rows.upperBound * input.width)]
+                switch result.placement {
+                case .append: output.append(contentsOf: pixels)
+                case .prepend: output.insert(contentsOf: pixels, at: 0)
+                }
             }
         }
         let expected = try frame(offset: 0, bodyHeight: 160 + 142)

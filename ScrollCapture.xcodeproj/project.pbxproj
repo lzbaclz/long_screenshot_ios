@@ -39,6 +39,7 @@
 		A166874F784F958B763C15F4 /* CaptureFramePipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FC9B61B7555A7CE67903C3 /* CaptureFramePipelineTests.swift */; };
 		A482FF00164D29796D9D33B7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8DBB254E08A073750F127A27 /* InfoPlist.strings */; };
 		A97A838E2DEC00DB9F362A55 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1A25B57E40BC7160DDB4798B /* PrivacyInfo.xcprivacy */; };
+		B0AC26C19A94E9C5714DE4E7 /* BidirectionalAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FEC007261D2307D0F45EE63 /* BidirectionalAcceptanceTests.swift */; };
 		B37158206C65612ECBFD3BBA /* PlatformViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86269EDADBDE13C6DCFF7ECE /* PlatformViews.swift */; };
 		B452807DD2507B423C56E75D /* CaptureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2511FFA0A741C18B2BE97FB /* CaptureModels.swift */; };
 		B52DFF93E4F4D9BADD5FFBE5 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703F1A25536D669653E1EC61 /* Theme.swift */; };
@@ -127,6 +128,7 @@
 		4B29DCC5A99D542D9BEB61C7 /* BroadcastExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = BroadcastExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4FBA6309072FB891DD83011D /* CaptureLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureLibrary.swift; sourceTree = "<group>"; };
 		573CBCFBCFF002F07D63187E /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		5FEC007261D2307D0F45EE63 /* BidirectionalAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BidirectionalAcceptanceTests.swift; sourceTree = "<group>"; };
 		603276705D46F5BBF8E6D4DC /* ScrollCapturePermissionsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ScrollCapturePermissionsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		67E35A3D9D7331E1A6DD07AC /* ScrollCaptureApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollCaptureApp.swift; sourceTree = "<group>"; };
 		703F1A25536D669653E1EC61 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 		4A7EA28F96053AAB964E9F4A /* SharedTests */ = {
 			isa = PBXGroup;
 			children = (
+				5FEC007261D2307D0F45EE63 /* BidirectionalAcceptanceTests.swift */,
 				40FC9B61B7555A7CE67903C3 /* CaptureFramePipelineTests.swift */,
 				23A27693329C3A825BE6CB5F /* CaptureStorageTests.swift */,
 			);
@@ -625,6 +628,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B0AC26C19A94E9C5714DE4E7 /* BidirectionalAcceptanceTests.swift in Sources */,
 				A166874F784F958B763C15F4 /* CaptureFramePipelineTests.swift in Sources */,
 				54C382E21F63A0EFEC6E6FED /* CaptureStorageTests.swift in Sources */,
 				9A4EE9C21C70EEAE091F57B9 /* PurchaseQuotaTests.swift in Sources */,
@@ -1057,7 +1061,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1078,7 +1082,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1151,7 +1155,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1172,7 +1176,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1256,7 +1260,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1271,7 +1275,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

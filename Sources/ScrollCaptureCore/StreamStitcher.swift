@@ -28,6 +28,10 @@ public struct AlignmentConfiguration: Sendable {
 }
 
 public struct StitchDecision: Equatable, Sendable {
+    public enum Placement: String, Sendable {
+        case append, prepend
+    }
+
     public enum Status: String, Sendable {
         case started, advanced, unchanged, backtracked, rejected
     }
@@ -37,19 +41,37 @@ public struct StitchDecision: Equatable, Sendable {
     }
 
     public let status: Status
-    /// Rows to append from THIS frame. Nil means do not append anything.
+    /// New rows from THIS frame, in top-to-bottom order. Insert at `placement`.
+    /// Nil means the captured image must remain unchanged.
     /// For the first frame this is the whole configured capture region.
     public let sourceRows: Range<Int>?
+    /// Where to insert `sourceRows`. Defaults to append when there are no rows.
+    public let placement: Placement
     /// Current viewport's position relative to the first accepted viewport.
-    /// Negative positions may be visited but never prepend content.
     public let contentOffset: Int
-    /// Furthest accepted viewport position, irrespective of subsequent backtracking.
+    /// Earliest accepted viewport position, irrespective of subsequent movement.
+    public let earliestOffset: Int
+    /// Furthest accepted viewport position, irrespective of subsequent movement.
+    /// The captured interval is earliestOffset..<(furthestOffset + bodyHeight).
     public let furthestOffset: Int
     public let confidence: Double
     public let rejection: Rejection?
+
+    public init(status: Status, sourceRows: Range<Int>?, contentOffset: Int,
+                furthestOffset: Int, confidence: Double, rejection: Rejection?,
+                placement: Placement = .append, earliestOffset: Int = 0) {
+        self.status = status
+        self.sourceRows = sourceRows
+        self.placement = sourceRows == nil ? .append : placement
+        self.contentOffset = contentOffset
+        self.earliestOffset = earliestOffset
+        self.furthestOffset = furthestOffset
+        self.confidence = confidence
+        self.rejection = rejection
+    }
 }
 
-/// Conservative streaming vertical alignment. Unknown/ambiguous gaps never append.
+/// Conservative bidirectional vertical alignment. Unknown/ambiguous gaps never add rows.
 /// Memory is bounded by `maxHistory` grayscale frames (hard limit: 8).
 /// This type performs no video recording, UI capture, file access or networking.
 public struct StreamStitcher: Sendable {
@@ -63,10 +85,17 @@ public struct StreamStitcher: Sendable {
         let shift: Int
         let referenceIndex: Int
         let error: Double
+        let hasDistributedDetail: Bool
+    }
+
+    private struct MatchScore {
+        let error: Double
+        let hasDistributedDetail: Bool
     }
 
     public let configuration: AlignmentConfiguration
     public private(set) var contentOffset = 0
+    public private(set) var earliestOffset = 0
     public private(set) var furthestOffset = 0
     public var referenceCount: Int { references.count }
     private var references: [Reference] = []
@@ -78,6 +107,7 @@ public struct StreamStitcher: Sendable {
     public mutating func reset() {
         references.removeAll(keepingCapacity: false)
         contentOffset = 0
+        earliestOffset = 0
         furthestOffset = 0
     }
 
@@ -108,15 +138,17 @@ public struct StreamStitcher: Sendable {
             // Search every integer displacement; coarse *spatial* sampling avoids
             // losing a correct odd-pixel shift on sharp text or fine textures.
             for shift in -maximumShift...maximumShift {
-                let error = matchError(reference.frame, frame, shift: shift, columns: 16, rows: 24)
+                let score = matchScore(reference.frame, frame, shift: shift, columns: 16, rows: 24)
                 coarse.append(Candidate(offset: reference.offset + shift, shift: shift,
-                                        referenceIndex: referenceIndex, error: error))
+                                        referenceIndex: referenceIndex, error: score.error,
+                                        hasDistributedDetail: score.hasDistributedDetail))
             }
             coarse.sort(by: candidateOrder)
             for candidate in coarse.prefix(12) {
-                let error = matchError(reference.frame, frame, shift: candidate.shift, columns: 48, rows: 96)
+                let score = matchScore(reference.frame, frame, shift: candidate.shift, columns: 48, rows: 96)
                 refined.append(Candidate(offset: candidate.offset, shift: candidate.shift,
-                                         referenceIndex: referenceIndex, error: error))
+                                         referenceIndex: referenceIndex, error: score.error,
+                                         hasDistributedDetail: score.hasDistributedDetail))
             }
         }
 
@@ -132,13 +164,18 @@ public struct StreamStitcher: Sendable {
         guard margin >= configuration.ambiguityMargin else {
             return reject(.ambiguous)
         }
+        // A blank overlap or one animated marker cannot establish a unique
+        // document position, even if its absolute pixel error happens to be low.
+        guard best.hasDistributedDetail else { return reject(.ambiguous) }
 
         let quality = max(0, 1 - best.error / configuration.maximumMeanAbsoluteError)
         let separation = min(1, margin / (configuration.ambiguityMargin * 3))
         let confidence = max(0, min(1, 0.65 * quality + 0.35 * separation))
         let previousOffset = contentOffset
+        let oldEarliest = earliestOffset
         let oldFurthest = furthestOffset
         contentOffset = best.offset
+        earliestOffset = min(earliestOffset, best.offset)
         furthestOffset = max(furthestOffset, best.offset)
 
         // Keep the most recent trusted view, plus a small bounded history, for
@@ -149,6 +186,14 @@ public struct StreamStitcher: Sendable {
             references.removeFirst(references.count - configuration.maxHistory)
         }
 
+        if best.offset < oldEarliest {
+            let addedRows = oldEarliest - best.offset
+            // A trusted overlap keeps both ends continuous, even when the
+            // first viewport and the old boundary references have been evicted.
+            let start = configuration.topInset
+            return decision(.advanced, rows: start..<(start + addedRows),
+                            placement: .prepend, confidence: confidence)
+        }
         if best.offset > oldFurthest {
             let addedRows = best.offset - oldFurthest
             // A trusted overlap with any prior accepted view ensures continuity.
@@ -183,10 +228,12 @@ public struct StreamStitcher: Sendable {
         return a.pixels[start..<end].elementsEqual(b.pixels[start..<end])
     }
 
-    /// Robust sampled mean absolute error: retain most of the raw error, while
-    /// reducing the effect of a small number of animated/temporarily loaded rows.
-    private func matchError(_ reference: GrayFrame, _ current: GrayFrame,
-                            shift: Int, columns: Int, rows: Int) -> Double {
+    /// Compare both raw pixels and horizontally detailed pixels. Blank rows
+    /// must not dilute competing text alignments into equally good matches.
+    /// Trimming limits transient row animations; spatial support prevents a
+    /// single icon or narrow scroll indicator from authorizing a join.
+    private func matchScore(_ reference: GrayFrame, _ current: GrayFrame,
+                            shift: Int, columns: Int, rows: Int) -> MatchScore {
         let height = current.height - configuration.topInset - configuration.bottomInset
         let overlap = height - abs(shift)
         let rowCount = min(rows, overlap)
@@ -195,22 +242,56 @@ public struct StreamStitcher: Sendable {
         let currentStart = configuration.topInset + max(-shift, 0)
         var rowErrors: [Double] = []
         rowErrors.reserveCapacity(rowCount)
+        var detailErrors: [Double] = []
+        var firstDetailRow: Int?
+        var lastDetailRow = 0
+        let edgeInset = max(1, current.width / 24)
 
         for rowIndex in 0..<rowCount {
             let y = rowCount == 1 ? 0 : rowIndex * (overlap - 1) / (rowCount - 1)
             let referenceRow = (referenceStart + y) * reference.width
             let currentRow = (currentStart + y) * current.width
             var total = 0
+            var detailTotal = 0
+            var detailCount = 0
+            var firstDetailColumn = current.width
+            var lastDetailColumn = 0
             for columnIndex in 0..<columnCount {
                 let x = columnCount == 1 ? 0 : columnIndex * (current.width - 1) / (columnCount - 1)
-                total += abs(Int(reference.pixels[referenceRow + x]) - Int(current.pixels[currentRow + x]))
+                let referenceValue = Int(reference.pixels[referenceRow + x])
+                let currentValue = Int(current.pixels[currentRow + x])
+                let difference = abs(referenceValue - currentValue)
+                total += difference
+                guard x >= edgeInset, x < current.width - edgeInset else { continue }
+                let referenceDetail = max(abs(referenceValue - Int(reference.pixels[referenceRow + x - 1])),
+                                          abs(referenceValue - Int(reference.pixels[referenceRow + x + 1])))
+                let currentDetail = max(abs(currentValue - Int(current.pixels[currentRow + x - 1])),
+                                        abs(currentValue - Int(current.pixels[currentRow + x + 1])))
+                if max(referenceDetail, currentDetail) >= 16 {
+                    detailTotal += difference
+                    detailCount += 1
+                    firstDetailColumn = min(firstDetailColumn, x)
+                    lastDetailColumn = max(lastDetailColumn, x)
+                }
             }
             rowErrors.append(Double(total) / Double(columnCount))
+            if detailCount >= 3 && lastDetailColumn - firstDetailColumn >= current.width / 6 {
+                detailErrors.append(Double(detailTotal) / Double(detailCount))
+                if firstDetailRow == nil { firstDetailRow = y }
+                lastDetailRow = y
+            }
         }
-        let mean = rowErrors.reduce(0, +) / Double(rowCount)
-        rowErrors.sort()
-        let retainedCount = max(1, Int(Double(rowCount) * 0.85))
-        let trimmed = rowErrors.prefix(retainedCount).reduce(0, +) / Double(retainedCount)
+        let raw = robustError(rowErrors)
+        let error = detailErrors.isEmpty ? raw : raw * 0.35 + robustError(detailErrors) * 0.65
+        let distributed = detailErrors.count >= 4
+            && lastDetailRow - (firstDetailRow ?? lastDetailRow) >= overlap / 4
+        return MatchScore(error: error, hasDistributedDetail: distributed)
+    }
+
+    private func robustError(_ errors: [Double]) -> Double {
+        let mean = errors.reduce(0, +) / Double(errors.count)
+        let retainedCount = max(1, Int(Double(errors.count) * 0.85))
+        let trimmed = errors.sorted().prefix(retainedCount).reduce(0, +) / Double(retainedCount)
         return mean * 0.35 + trimmed * 0.65
     }
 
@@ -224,9 +305,11 @@ public struct StreamStitcher: Sendable {
     }
 
     private func decision(_ status: StitchDecision.Status, rows: Range<Int>? = nil,
+                          placement: StitchDecision.Placement = .append,
                           confidence: Double = 0, rejection: StitchDecision.Rejection? = nil) -> StitchDecision {
         StitchDecision(status: status, sourceRows: rows, contentOffset: contentOffset,
-                       furthestOffset: furthestOffset, confidence: confidence, rejection: rejection)
+                       furthestOffset: furthestOffset, confidence: confidence, rejection: rejection,
+                       placement: placement, earliestOffset: earliestOffset)
     }
 
     private func reject(_ reason: StitchDecision.Rejection) -> StitchDecision {

@@ -16,6 +16,7 @@ struct HomeView: View {
                     captureCard
                     if let active = library.activeSession { activeCard(active) }
                     if !library.draftSessions.isEmpty { draftSection }
+                    if !library.failedSessions.isEmpty { failedSection }
                     recentSection
                     privacyFooter
                 }
@@ -81,7 +82,7 @@ struct HomeView: View {
             HStack {
                 PillLabel(title: "自己滑动，自然成图", symbol: "hand.draw")
                 Spacer()
-                Image(systemName: "arrow.down")
+                Image(systemName: "arrow.up.arrow.down")
                     .font(.title2.weight(.light))
                     .foregroundStyle(ScrollTheme.teal)
             }
@@ -127,7 +128,7 @@ struct HomeView: View {
                         .background(.white, in: Circle())
                     VStack(alignment: .leading, spacing: 5) {
                         Text("点按左侧按钮开始").font(.headline)
-                        Text("开始广播后，切到目标应用慢慢下滑")
+                        Text("开始广播后，切到目标应用上下滑动")
                             .font(.caption)
                             .foregroundStyle(ScrollTheme.secondary)
                     }
@@ -164,7 +165,7 @@ struct HomeView: View {
                 Label(LocalizedStringKey(session.strips.isEmpty ? "准备捕捉，请切到目标应用" : "正在为你保留内容"), systemImage: "record.circle.fill")
                     .font(.headline)
                     .foregroundStyle(ScrollTheme.teal)
-                Text("返回目标应用继续向下滑动。结束时点按系统捕捉指示，或在这里停止。")
+                Text("返回目标应用上下滑动，前后画面保留重叠。结束时点按系统捕捉指示，或在这里停止。")
                     .font(.subheadline)
                     .foregroundStyle(ScrollTheme.secondary)
                 Button("停止并生成长图") { library.stopCapture() }
@@ -180,6 +181,7 @@ struct HomeView: View {
             HStack {
                 Label("可恢复的内容", systemImage: "arrow.clockwise.circle")
                     .font(.headline)
+                    .accessibilityIdentifier("home.drafts")
                 Spacer()
                 Text("\(library.draftSessions.count)").foregroundStyle(ScrollTheme.secondary)
             }
@@ -192,7 +194,22 @@ struct HomeView: View {
                     .accessibilityIdentifier("capture.row.\(session.id.uuidString)")
             }
         }
-        .accessibilityIdentifier("home.drafts")
+    }
+
+    private var failedSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("未完成的捕捉", systemImage: "exclamationmark.circle")
+                .font(.headline)
+                .accessibilityIdentifier("home.failedCaptures")
+            Text("这些捕捉没有保存可用画面，点开可查看原因和重试建议。")
+                .font(.caption)
+                .foregroundStyle(ScrollTheme.secondary)
+            ForEach(library.failedSessions.prefix(2)) { session in
+                NavigationLink(value: session.id) { CaptureRow(session: session) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("capture.row.\(session.id.uuidString)")
+            }
+        }
     }
 
     private var recentSection: some View {
@@ -261,7 +278,7 @@ struct CaptureRow: View {
                         .frame(width: 52, height: 67, alignment: .top)
                         .clipped()
                 } else {
-                    Image(systemName: "doc.text.image")
+                    Image(systemName: session.hasImage ? "doc.text.image" : "exclamationmark.triangle")
                         .font(.title2)
                         .foregroundStyle(ScrollTheme.teal)
                         .padding(.top, 19)
@@ -271,7 +288,9 @@ struct CaptureRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 7) {
                 Text(session.displayTitle).font(.subheadline.weight(.semibold))
-                Text("\(session.pixelWidth) × \(session.pixelHeight) · \(L10n.text(session.stateLabel))")
+                Text(session.hasImage
+                     ? "\(session.pixelWidth) × \(session.pixelHeight) · \(L10n.text(session.stateLabel))"
+                     : L10n.text(session.stateLabel))
                     .font(.caption)
                     .foregroundStyle(ScrollTheme.secondary)
             }
@@ -282,7 +301,10 @@ struct CaptureRow: View {
         .padding(14)
         .background(.white, in: RoundedRectangle(cornerRadius: 20))
         .task(id: session.updatedAt) {
-            thumbnail = try? await library.preview(sessionID: session.id, maxDimension: 500)
+            thumbnail = nil
+            if session.hasImage {
+                thumbnail = try? await library.preview(sessionID: session.id, maxDimension: 500)
+            }
         }
     }
 }

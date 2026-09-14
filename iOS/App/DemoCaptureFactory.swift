@@ -24,6 +24,17 @@ enum DemoCaptureFactory {
             manifest.stopReason = index == 2 ? "示例：捕捉中途停止，已保存的部分可以继续编辑和导出。" : nil
             try repository.saveManifest(manifest)
         }
+        if ProcessInfo.processInfo.arguments.contains("--demo-empty-capture") {
+            // An explicit synthetic failure fixture exercises legacy zero-frame presentation.
+            let id = UUID(uuidString: "D3E00000-0000-4000-8000-000000000004")!
+            var manifest = CaptureSessionManifest(id: id,
+                createdAt: Date(timeIntervalSince1970: 1_789_293_800), isDemo: true)
+            try FileManager.default.createDirectory(at: repository.sessionDirectory(id: id),
+                                                    withIntermediateDirectories: true)
+            manifest.status = .partial
+            manifest.stopReason = "画面无法可靠衔接，已保存连续部分。请降低滑动速度或调整捕捉区域后重试。"
+            try repository.saveManifest(manifest)
+        }
     }
 
     private static func makePage(page: Int, variant: Int) -> UIImage {

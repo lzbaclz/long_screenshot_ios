@@ -131,11 +131,37 @@ public final class CaptureSessionRepository: @unchecked Sendable {
             guard manifest.status == .capturing,
                   Date().timeIntervalSince(manifest.updatedAt) > max(15, staleAfter) else { continue }
             manifest.status = .interrupted
-            manifest.stopReason = "捕捉意外中断，已保留最后一次成功写入的画面。"
+            if manifest.diagnostics == nil { manifest.diagnostics = CaptureDiagnostics() }
+            manifest.diagnostics?.terminationCause = "systemInterruption"
+            if manifest.strips.isEmpty, let candidate = manifest.provisionalFrame,
+               let url = try? stripURL(candidate, sessionID: manifest.id),
+               fileManager.fileExists(atPath: url.path) {
+                manifest.strips = [candidate]; manifest.pixelWidth = candidate.pixelWidth
+                manifest.provisionalFrame = nil; manifest.outputKind = .singleFrame
+                manifest.stopReason = "捕捉意外中断，仅恢复一张完整单屏，未生成连续长图。"
+            } else {
+                manifest.stopReason = manifest.hasImage ? "捕捉意外中断，已保留最后一次成功写入的画面。" : "捕捉意外中断，未写入可用画面。请重新开始。"
+            }
             manifest.updatedAt = Date()
             try saveManifest(manifest); count += 1
         }
         return count
+    }
+
+    /// Promote the already-durable still without decoding/re-encoding a full
+    /// bitmap. This also recovers it when the first body transaction failed.
+    @discardableResult
+    public func preserveProvisionalFrame(to manifest: inout CaptureSessionManifest) throws -> Bool {
+        guard manifest.strips.isEmpty else { return false }
+        let published = try loadSession(id: manifest.id)
+        guard let candidate = published.provisionalFrame else { return false }
+        let url = try stripURL(candidate, sessionID: manifest.id)
+        guard fileManager.fileExists(atPath: url.path) else { throw CaptureStorageError.invalidManifest }
+        var updated = manifest
+        updated.strips = [candidate]; updated.pixelWidth = candidate.pixelWidth
+        updated.provisionalFrame = nil; updated.outputKind = .singleFrame; updated.updatedAt = Date()
+        try saveManifest(updated); manifest = updated
+        return true
     }
 
     public func deleteSession(id: UUID) throws {
@@ -157,6 +183,23 @@ public final class CaptureSessionRepository: @unchecked Sendable {
                   $0.pixelHeight > 0 && $0.pixelHeight <= 16_384 && $0.sourceTopPixel >= 0 &&
                   $0.fileName == "\($0.id.uuidString).png" }),
               manifest.pixelHeight <= 200_000 else { throw CaptureStorageError.invalidManifest }
+        if let candidate = manifest.provisionalFrame {
+            guard candidate.pixelWidth > 0, candidate.pixelWidth <= 8_192,
+                  candidate.pixelHeight > 0, candidate.pixelHeight <= 16_384,
+                  candidate.sourceTopPixel == 0,
+                  candidate.fileName == "\(candidate.id.uuidString).png",
+                  !manifest.strips.contains(where: { $0.id == candidate.id }) else {
+                throw CaptureStorageError.invalidManifest
+            }
+        }
+        if let leading = manifest.leadingEdgeStripID {
+            guard manifest.strips.first?.id == leading else { throw CaptureStorageError.invalidManifest }
+        }
+        if let trailing = manifest.trailingEdgeStripID {
+            guard manifest.strips.last?.id == trailing, trailing != manifest.leadingEdgeStripID else {
+                throw CaptureStorageError.invalidManifest
+            }
+        }
         _ = try manifest.configuration.validated()
         try validateEdits(manifest.edits, strips: manifest.strips)
     }

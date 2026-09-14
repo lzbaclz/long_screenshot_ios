@@ -37,6 +37,8 @@ final class FixedRegionDetectorTests: XCTestCase {
         let original = try frame(offset: 0)
         XCTAssertEqual(FixedRegionDetector.resolve(reference: original, current: original, downwardDisplacement: 0), .ambiguous)
         XCTAssertEqual(FixedRegionDetector.resolve(reference: original, current: original, downwardDisplacement: 100), .ambiguous)
+        XCTAssertEqual(FixedRegionDetector.resolve(reference: original, current: original, downwardDisplacement: Int.min), .ambiguous)
+        XCTAssertTrue(FixedRegionDetector.candidates(reference: original, current: original, displacement: Int.min).isEmpty)
         XCTAssertEqual(FixedRegionDetector.resolve(reference: original, current: try frame(offset: 1, top: 1),
                                                    downwardDisplacement: 1), .ambiguous)
     }
@@ -50,6 +52,43 @@ final class FixedRegionDetectorTests: XCTestCase {
         XCTAssertEqual(FixedRegionDetector.resolve(
             reference: try GrayFrame(width: 48, height: 200, pixels: first),
             current: try GrayFrame(width: 48, height: 200, pixels: current), downwardDisplacement: 31), .ambiguous)
+    }
+
+    func testReverseScrollFindsSameFixedRegions() throws {
+        let lower = try frame(offset: 31, top: 18, bottom: 26)
+        let upper = try frame(offset: 0, top: 18, bottom: 26)
+        XCTAssertEqual(FixedRegionDetector.resolve(reference: lower, current: upper,
+                                                   downwardDisplacement: -31),
+                       FixedRegionDetector.resolve(reference: upper, current: lower,
+                                                   downwardDisplacement: 31))
+    }
+
+    func testChangingClockAndWhiteMarginProduceReplayCandidatesWithoutPretendingExactBoundary() throws {
+        let a = try frame(offset: 0, top: 18, bottom: 26)
+        let b = try frame(offset: 31, top: 18, bottom: 26)
+        var pixels = b.pixels
+        // A small clock change at the outer edge must not veto all body evidence.
+        for x in 4..<12 { pixels[2 * 48 + x] = 255 - pixels[2 * 48 + x] }
+        let changed = try GrayFrame(width: b.width, height: b.height, pixels: pixels)
+        let candidates = FixedRegionDetector.candidates(reference: a, current: changed, displacement: 31)
+        XCTAssertFalse(candidates.isEmpty)
+        XCTAssertEqual(candidates.first?.top, 18)
+        XCTAssertEqual(candidates.first?.bottom, 26)
+    }
+
+    func testBoundaryNearSearchLimitUsesSupportingRowsInsideBody() throws {
+        // Moving content begins just before the 30% boundary-search limit.
+        // Supporting features beyond that limit are valid evidence, not crop.
+        let first = try frame(offset: 0, whiteUntil: 78)
+        let moved = try frame(offset: 31, whiteUntil: 78)
+        let candidate = FixedRegionDetector.candidates(reference: first, current: moved, displacement: 31).first
+        XCTAssertEqual(candidate?.top, 47)
+        XCTAssertEqual(candidate?.bottom, 0)
+    }
+
+    func testUninformativeWhiteScreenCannotProposeMotionRegion() throws {
+        let white = try GrayFrame(width: 48, height: 160, pixels: [UInt8](repeating: 250, count: 48 * 160))
+        XCTAssertTrue(FixedRegionDetector.candidates(reference: white, current: white, displacement: 31).isEmpty)
     }
 
     private func frame(offset: Int, top: Int = 0, bottom: Int = 0, whiteUntil: Int = 0) throws -> GrayFrame {

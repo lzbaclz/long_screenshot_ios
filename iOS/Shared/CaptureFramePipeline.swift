@@ -1,10 +1,27 @@
 #if canImport(UIKit)
 import CoreGraphics
+import CoreImage
+import ImageIO
 import ScrollCaptureCore
 
 struct PendingCaptureStrip {
     let image: CGImage
     let sourceTopPixel: Int
+    let placement: StitchDecision.Placement
+    /// Automatic matching insets never authorize losing outer screen pixels.
+    /// The repository preserves these edges once and replaces the advancing end
+    /// in the same atomic manifest commit as its adjoining content.
+    let fullImage: CGImage?
+    let topInset: Int
+    let bottomInset: Int
+    let isInitial: Bool
+
+    init(image: CGImage, sourceTopPixel: Int, placement: StitchDecision.Placement = .append,
+         fullImage: CGImage? = nil, topInset: Int = 0, bottomInset: Int = 0, isInitial: Bool = false) {
+        self.image = image; self.sourceTopPixel = sourceTopPixel; self.placement = placement
+        self.fullImage = fullImage; self.topInset = topInset; self.bottomInset = bottomInset
+        self.isInitial = isInitial
+    }
 }
 
 struct CaptureFrameResult {
@@ -16,105 +33,232 @@ struct CaptureFrameResult {
     init(status: StitchDecision.Status, strips: [PendingCaptureStrip], isArming: Bool,
          replacedProvisionalStart: Bool = false, regionWarning: String? = nil) {
         self.status = status; self.strips = strips; self.isArming = isArming
-        self.replacedProvisionalStart = replacedProvisionalStart
-        self.regionWarning = regionWarning
+        self.replacedProvisionalStart = replacedProvisionalStart; self.regionWarning = regionWarning
     }
 }
 
-/// Before first confirmed scrolling, scene changes replace the provisional start frame.
-/// Once started, rejected gaps never replace or extend the trusted sequence.
+/// One provisional lossless still file, bounded grayscale evidence, and no
+/// untrusted bridge. A rejected frame never becomes a reference after stitching starts.
 final class CaptureFramePipeline {
     let configuration: AlignmentConfiguration
     private(set) var effectiveConfiguration: AlignmentConfiguration
     private var stitcher: StreamStitcher
-    private var candidateImage: CGImage?
+    private var probes: [StreamStitcher] = []
+    private var candidateURL: URL?
+    private let candidateRepository: CaptureSessionRepository?
+    private let candidateSessionID: UUID?
+    private var firstCommitConfirmed = false
+    private(set) var provisionalFrame: CaptureStrip?
     private var candidateAnalysis: GrayFrame?
+    private var armingRejections = 0
+    private var wasRejected = false
     private(set) var hasStarted = false
+    private(set) var diagnostics = CaptureDiagnostics()
     private var automaticallyFindRegion: Bool { configuration.topInset == 0 && configuration.bottomInset == 0 }
 
-    init(configuration: AlignmentConfiguration) {
-        self.configuration = configuration
-        self.effectiveConfiguration = configuration
+    init(configuration: AlignmentConfiguration, repository: CaptureSessionRepository? = nil, sessionID: UUID? = nil) {
+        self.configuration = configuration; self.effectiveConfiguration = configuration
         self.stitcher = StreamStitcher(configuration: configuration)
+        self.candidateRepository = repository; self.candidateSessionID = sessionID
     }
 
+    deinit { clearCandidate() }
+
     func ingest(_ analysis: GrayFrame, makeImage: () throws -> CGImage) throws -> CaptureFrameResult {
-        if !hasStarted && candidateAnalysis == nil && automaticallyFindRegion {
-            stitcher = StreamStitcher(configuration: probeConfiguration(height: analysis.height))
+        diagnostics.observedFrames += 1
+        if candidateAnalysis == nil && !hasStarted {
+            return try arm(analysis, replaced: false, makeImage: makeImage)
         }
         var updated = stitcher
-        var decision = updated.ingest(analysis)
-        var replacedStart = false
-        if !hasStarted && (decision.status == .rejected || decision.status == .backtracked) {
-            // App switching and moving to the desired starting point are allowed while arming.
-            replacedStart = candidateImage != nil
-            updated = StreamStitcher(configuration: automaticallyFindRegion
-                ? probeConfiguration(height: analysis.height) : configuration)
-            decision = updated.ingest(analysis)
-        }
-        if !hasStarted && decision.status == .started {
-            candidateImage = try makeImage()
-            candidateAnalysis = analysis
-            stitcher = updated
-            return .init(status: .started, strips: [], isArming: true, replacedProvisionalStart: replacedStart)
+        let automaticArming = !hasStarted && automaticallyFindRegion
+        // Automatic arming is verified by regional probes and a full replay;
+        // matching the uncropped whole screen here repeats an unused search.
+        var decision = automaticArming
+            ? StitchDecision(status: .rejected, sourceRows: nil, contentOffset: 0, furthestOffset: 0,
+                             confidence: 0, rejection: .insufficientOverlap)
+            : updated.ingest(analysis)
+        if automaticArming {
+            // Independently inspect multiple overlapping central regions. A
+            // blank center or a large chat bubble need not veto visible text in
+            // another region. Conflicting nonzero offsets are never accepted.
+            var hypotheses: [StitchDecision] = []
+            for probe in probes {
+                var copy = probe; hypotheses.append(copy.ingest(analysis))
+                if hypotheses.count == 2,
+                   hypotheses.allSatisfy({ $0.status == .advanced }),
+                   Set(hypotheses.map(\.contentOffset)).count == 1 {
+                    // Two independent regions agree. The narrower third region
+                    // is a rescue probe for sparse/cluttered scenes, not a
+                    // mandatory extra search on every normal starting scroll.
+                    break
+                }
+            }
+            let moving = hypotheses.filter { $0.status == .advanced }
+            let offsets = Set(moving.map(\.contentOffset))
+            if offsets.count == 1, let match = moving.first { decision = match }
+            else if offsets.count > 1 { return reject(arming: true, region: true) }
+            else if hypotheses.contains(where: { $0.status == .unchanged }) {
+                armingRejections = 0
+                return .init(status: .unchanged, strips: [], isArming: true)
+            }
         }
         if decision.status == .rejected {
-            return .init(status: .rejected, strips: [], isArming: !hasStarted)
+            if !hasStarted {
+                armingRejections += 1
+                // Ignore isolated countdown/loading/transition frames. A new
+                // scene must persist through several admitted samples before
+                // replacing the provisional starting point.
+                if armingRejections >= 3 {
+                    return try arm(analysis, replaced: true, makeImage: makeImage)
+                }
+            }
+            return reject(arming: !hasStarted, region: false)
         }
+        armingRejections = 0
         if decision.status == .unchanged {
-            // Preserve the provisional first frame so its position matches the reference.
             if hasStarted { stitcher = updated }
+            recoveredIfNeeded()
             return .init(status: .unchanged, strips: [], isArming: !hasStarted)
         }
         if !hasStarted && automaticallyFindRegion && decision.status == .advanced {
-            guard let candidateAnalysis,
-                  case .resolved(let insets) = FixedRegionDetector.resolve(
-                    reference: candidateAnalysis, current: analysis,
-                    downwardDisplacement: decision.contentOffset) else { return ambiguousRegion() }
-            var resolved = configuration
-            resolved.topInset = insets.top; resolved.bottomInset = insets.bottom
-            var replay = StreamStitcher(configuration: resolved)
-            guard replay.ingest(candidateAnalysis).status == .started else { return ambiguousRegion() }
-            let verified = replay.ingest(analysis)
-            guard verified.status == .advanced, verified.contentOffset == decision.contentOffset else {
-                return ambiguousRegion()
+            diagnostics.regionAttempts += 1
+            guard let candidateAnalysis else { return reject(arming: true, region: true) }
+            let candidates = FixedRegionDetector.candidates(reference: candidateAnalysis, current: analysis,
+                                                            displacement: decision.contentOffset)
+            var verified: (StreamStitcher, StitchDecision, AlignmentConfiguration)?
+            for insets in candidates {
+                var region = configuration
+                region.topInset = insets.top; region.bottomInset = insets.bottom
+                var replay = StreamStitcher(configuration: region)
+                guard replay.ingest(candidateAnalysis).status == .started else { continue }
+                let result = replay.ingest(analysis)
+                if result.status == .advanced, result.contentOffset == decision.contentOffset {
+                    verified = (replay, result, region); break
+                }
             }
-            effectiveConfiguration = resolved
-            updated = replay; decision = verified
+            // Keep the original provisional frame and retry subsequent frames;
+            // uncertain region evidence is not an instruction to stop ReplayKit.
+            guard let verified else { return reject(arming: true, region: true) }
+            updated = verified.0; decision = verified.1; effectiveConfiguration = verified.2
         }
         guard let rows = decision.sourceRows, !rows.isEmpty else {
-            stitcher = updated
+            stitcher = updated; recoveredIfNeeded()
             return .init(status: decision.status, strips: [], isArming: !hasStarted)
         }
+        let region = effectiveConfiguration
         var strips: [PendingCaptureStrip] = []
         if !hasStarted {
-            guard let candidateImage,
-                  let first = candidateImage.cropping(to: CGRect(x: 0, y: effectiveConfiguration.topInset,
-                      width: candidateImage.width,
-                      height: candidateImage.height - effectiveConfiguration.topInset - effectiveConfiguration.bottomInset)) else {
-                throw CaptureStorageError.imageEncodingFailed
-            }
-            strips.append(.init(image: first, sourceTopPixel: effectiveConfiguration.topInset))
+            guard let candidateImage = loadCandidate(),
+                  let first = candidateImage.cropping(to: CGRect(x: 0, y: region.topInset,
+                      width: candidateImage.width, height: candidateImage.height - region.topInset - region.bottomInset))
+            else { throw CaptureStorageError.imageEncodingFailed }
+            strips.append(.init(image: first, sourceTopPixel: region.topInset,
+                                fullImage: automaticallyFindRegion ? candidateImage : nil,
+                                topInset: region.topInset, bottomInset: region.bottomInset, isInitial: true))
         }
         let image = try makeImage()
-        guard let tail = image.cropping(to: CGRect(x: 0, y: rows.lowerBound, width: image.width, height: rows.count))
+        guard image.height == analysis.height,
+              let added = image.cropping(to: CGRect(x: 0, y: rows.lowerBound, width: image.width, height: rows.count))
         else { throw CaptureStorageError.imageEncodingFailed }
-        strips.append(.init(image: tail, sourceTopPixel: rows.lowerBound))
-        hasStarted = true; candidateImage = nil; candidateAnalysis = nil; stitcher = updated
+        strips.append(.init(image: added, sourceTopPixel: rows.lowerBound, placement: decision.placement,
+                            fullImage: automaticallyFindRegion ? image : nil,
+                            topInset: region.topInset, bottomInset: region.bottomInset))
+        hasStarted = true; candidateAnalysis = nil; probes.removeAll()
+        stitcher = updated; diagnostics.acceptedFrames += 1; diagnostics.lastStage = "stitching"
+        recoveredIfNeeded()
         return .init(status: decision.status, strips: strips, isArming: false)
     }
 
-    private func probeConfiguration(height: Int) -> AlignmentConfiguration {
-        var probe = configuration
-        // Discard outer fifths for the initial motion hypothesis only. The
-        // source image is cropped only after the separate boundary check.
-        probe.topInset = height / 5; probe.bottomInset = height / 5
-        return probe
+    /// This is explicitly a single screen fallback, never evidence of a long image.
+    func takeSingleFrameFallback() -> CGImage? {
+        guard !firstCommitConfirmed else { return nil }
+        defer { clearCandidate(); candidateAnalysis = nil; probes.removeAll() }
+        return loadCandidate()
     }
 
-    private func ambiguousRegion() -> CaptureFrameResult {
-        .init(status: .rejected, strips: [], isArming: true,
-              regionWarning: "无法安全识别固定栏或页面留白。请手动设置顶部和底部忽略区域后重试。")
+    private func arm(_ analysis: GrayFrame, replaced: Bool,
+                     makeImage: () throws -> CGImage) throws -> CaptureFrameResult {
+        // Stage the new still before releasing the old one. A rendering or
+        // write failure during an app switch leaves the last usable candidate.
+        let oldURL = candidateURL
+        let url: URL
+        if let repository = candidateRepository, let sessionID = candidateSessionID {
+            let candidate = try autoreleasepool {
+                try repository.stageProvisionalFrame(image: makeImage(), sessionID: sessionID)
+            }
+            provisionalFrame = candidate
+            url = try repository.stripURL(candidate, sessionID: sessionID)
+        } else {
+            url = FileManager.default.temporaryDirectory.appendingPathComponent("Longlet-Candidate-\(UUID().uuidString).png")
+            try autoreleasepool { try CaptureSessionRepository.writeImage(makeImage(), to: url, format: .png) }
+        }
+        candidateURL = url
+        if candidateRepository == nil, let oldURL { try? FileManager.default.removeItem(at: oldURL) }
+        candidateAnalysis = analysis; armingRejections = 0
+        stitcher = StreamStitcher(configuration: configuration); _ = stitcher.ingest(analysis)
+        probes = [5, 8, 3].map { divisor in
+            var region = configuration; region.topInset = analysis.height / divisor
+            region.bottomInset = analysis.height / divisor
+            var probe = StreamStitcher(configuration: region); _ = probe.ingest(analysis); return probe
+        }
+        diagnostics.lastStage = "arming"
+        if replaced { diagnostics.provisionalReplacements += 1 }
+        return .init(status: .started, strips: [], isArming: true, replacedProvisionalStart: replaced)
+    }
+
+    private func loadCandidate() -> CGImage? {
+        guard let candidateURL,
+              let source = CGImageSourceCreateWithURL(candidateURL as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0,
+            [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+    }
+
+    /// Call only after the corresponding repository transaction has succeeded.
+    /// Until then, even a detected first scroll can fall back to its durable still.
+    func confirmCommit() {
+        guard hasStarted else { return }
+        firstCommitConfirmed = true; clearCandidate(); provisionalFrame = nil
+    }
+
+    private func clearCandidate() {
+        // App Group candidates are owned by the atomic manifest transaction;
+        // destroying this pipeline or a failed fallback must not delete them.
+        if candidateRepository == nil, let candidateURL { try? FileManager.default.removeItem(at: candidateURL) }
+        candidateURL = nil
+    }
+
+    private func reject(arming: Bool, region: Bool) -> CaptureFrameResult {
+        wasRejected = true; diagnostics.rejectedFrames += 1
+        diagnostics.lastStage = region ? "region" : "alignment"
+        return .init(status: .rejected, strips: [], isArming: arming,
+                     regionWarning: region ? "正在确认滚动区域，请缓慢滚动并等待画面稳定。" : nil)
+    }
+
+    private func recoveredIfNeeded() {
+        if wasRejected { diagnostics.recoveredGaps += 1; wasRejected = false }
+    }
+}
+
+/// Shared by the real capture adapters and host tests. CGImage crop rows and
+/// GrayFrame pixels both use the CGImage's top-to-bottom provider row order.
+/// Core Image's bottom-left coordinate system is confined to createCGImage.
+enum CaptureFrameConversion {
+    static func grayFrame(_ source: CIImage, context imageContext: CIContext,
+                          width: Int, height: Int) throws -> GrayFrame {
+        let normalized = source.transformed(by: CGAffineTransform(translationX: -source.extent.minX,
+                                                                  y: -source.extent.minY))
+        let resized = normalized.transformed(by: CGAffineTransform(scaleX: CGFloat(width) / normalized.extent.width,
+                                                                   y: CGFloat(height) / normalized.extent.height))
+        guard width > 0, height > 0,
+              let image = imageContext.createCGImage(resized, from: CGRect(x: 0, y: 0, width: width, height: height)),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0),
+              let bytes = context.data else { throw CaptureStorageError.imageEncodingFailed }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return try GrayFrame(width: width, height: height,
+                             pixels: Array(UnsafeBufferPointer(start: bytes.assumingMemoryBound(to: UInt8.self),
+                                                               count: width * height)))
     }
 }
 #endif

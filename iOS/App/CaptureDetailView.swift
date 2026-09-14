@@ -8,11 +8,11 @@ struct CaptureDetailView: View {
     let sessionID: UUID
     @State private var session: CaptureSessionManifest?
     @State private var preview: UIImage?
+    @State private var previewFailed = false
     @State private var isBusy = false
     @State private var message: String?
     @State private var showEditor = false
     @State private var showDelete = false
-    @State private var showUpgrade = false
     @State private var showSizeChoice = false
     @State private var shareFile: SharedImage?
     @State private var format = CaptureExportFormat.png
@@ -38,13 +38,25 @@ struct CaptureDetailView: View {
                                 .padding(15)
                                 .allowsHitTesting(false)
                         }
-                } else if session.strips.isEmpty {
-                    ContentUnavailableView("还没有可用画面", systemImage: "photo.badge.exclamationmark",
-                                           description: Text("这次捕捉在保存画面前结束，请返回首页重新开始。"))
+                } else if !session.hasImage {
+                    ContentUnavailableView {
+                        Label("未捕捉到可用画面", systemImage: "photo.badge.exclamationmark")
+                    } description: {
+                        Text("本次没有可编辑或导出的图片，也未扣除导出次数。请先查看上方结束原因，再返回首页重新捕捉。")
+                    } actions: {
+                        Button("返回首页") { dismiss() }
+                            .buttonStyle(.borderedProminent)
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityIdentifier("detail.noImage")
+                } else if previewFailed {
+                    unavailableImage
                 } else {
                     ProgressView("正在准备预览…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                exportBar
+                if session.hasImage && preview != nil { exportBar }
+            } else if previewFailed {
+                unavailableImage
             } else {
                 ProgressView("正在打开长图…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -54,11 +66,13 @@ struct CaptureDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { showEditor = true } label: { Text("编辑") }
-                    .disabled(isBusy || preview == nil)
-                    .accessibilityIdentifier("detail.edit")
+                if session?.hasImage == true {
+                    Button { showEditor = true } label: { Text("编辑") }
+                        .disabled(isBusy || preview == nil)
+                        .accessibilityIdentifier("detail.edit")
+                }
                 Button(role: .destructive) { showDelete = true } label: { Image(systemName: "trash") }
-                    .disabled(isBusy)
+                    .disabled(isBusy || session == nil)
                     .accessibilityLabel("删除截图")
                     .accessibilityIdentifier("detail.delete")
             }
@@ -67,10 +81,9 @@ struct CaptureDetailView: View {
         .sheet(isPresented: $showEditor, onDismiss: { Task { await reload() } }) {
             if let session { CaptureEditorView(session: session) }
         }
-        .sheet(isPresented: $showUpgrade) { UpgradeView() }
         .sheet(item: $shareFile) { item in
             ShareImageSheet(url: item.url) { completed in
-                if completed { purchases.recordSuccessfulExport(sessionID: sessionID) }
+                purchases.recordShareCompletion(sessionID: sessionID, completed: completed)
             }
         }
         .confirmationDialog("删除这张长图？", isPresented: $showDelete, titleVisibility: .visible) {
@@ -91,17 +104,29 @@ struct CaptureDetailView: View {
         )) { Button("知道了") { message = nil } } message: { Text(message ?? "") }
     }
 
+    private var unavailableImage: some View {
+        ContentUnavailableView {
+            Label("暂时无法打开画面", systemImage: "photo.badge.exclamationmark")
+        } description: {
+            Text("这张长图暂时无法打开。原始文件仍保存在本机，请稍后重试。")
+        } actions: {
+            Button("重新加载") { Task { await reload() } }
+        }
+    }
+
     private func information(_ session: CaptureSessionManifest) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Label(LocalizedStringKey(session.stateLabel), systemImage: session.startWarning != nil ? "exclamationmark.circle.fill" :
+                Label(LocalizedStringKey(session.stateLabel), systemImage: session.isFailedCapture || session.startWarning != nil ? "exclamationmark.circle.fill" :
                         (session.status == .completed ? "checkmark.circle.fill" : "arrow.clockwise.circle"))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(ScrollTheme.teal)
                 Spacer()
-                Text(String(format: L10n.text("原图 %lld × %lld"), Int64(session.pixelWidth), Int64(session.pixelHeight)))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(ScrollTheme.secondary)
+                if session.hasImage {
+                    Text(String(format: L10n.text("原图 %lld × %lld"), Int64(session.pixelWidth), Int64(session.pixelHeight)))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(ScrollTheme.secondary)
+                }
             }
             if let notice = session.noticeText {
                 Text(session.localizedNoticeText ?? notice)
@@ -109,8 +134,34 @@ struct CaptureDetailView: View {
                     .foregroundStyle(ScrollTheme.secondary)
                     .accessibilityIdentifier("detail.recoveredNotice")
             }
+            if session.leadingEdgeStripID != nil || session.trailingEdgeStripID != nil {
+                Text("自动衔接已保留首尾完整画面，顶部和底部可继续裁剪。")
+                    .font(.caption)
+                    .foregroundStyle(ScrollTheme.secondary)
+            }
+            if let diagnostics = session.diagnostics {
+                DisclosureGroup("捕捉详情") {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(String(format: L10n.text("停止阶段：%@"), L10n.text(diagnostics.stageLabel)))
+                        Text(String(format: L10n.text("结束类型：%@"), L10n.text(diagnostics.terminationLabel)))
+                        Text(String(format: L10n.text("已处理 %lld 帧 · 已衔接 %lld 帧"),
+                                    Int64(diagnostics.observedFrames), Int64(diagnostics.acceptedFrames)))
+                        Text(String(format: L10n.text("未衔接 %lld 帧 · 恢复 %lld 次"),
+                                    Int64(diagnostics.rejectedFrames), Int64(diagnostics.recoveredGaps)))
+                        Text(String(format: L10n.text("单帧最长处理 %.0f 毫秒"), diagnostics.maximumProcessingMilliseconds))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+                    .font(.caption)
+                    .foregroundStyle(ScrollTheme.secondary)
+                }
+                .font(.caption)
+                .accessibilityIdentifier("detail.diagnostics")
+            }
             if session.isDemo {
-                Text("这是生成的示例图片，用来体验编辑和导出，并非真实跨应用捕捉。")
+                Text(LocalizedStringKey(session.hasImage
+                    ? "这是生成的示例图片，用来体验编辑和导出，并非真实跨应用捕捉。"
+                    : "这是本机生成的失败示例，用来检查界面，并非真实跨应用捕捉。"))
                     .font(.caption2)
                     .foregroundStyle(ScrollTheme.secondary)
             }
@@ -159,17 +210,23 @@ struct CaptureDetailView: View {
 
     private func reload() async {
         guard let repository = library.repository else { return }
+        preview = nil
+        previewFailed = false
         do {
             session = try repository.loadSession(id: sessionID)
-            if session?.strips.isEmpty == false { preview = try await library.preview(sessionID: sessionID, maxDimension: 6000) }
+            if session?.hasImage == true { preview = try await library.preview(sessionID: sessionID, maxDimension: 6000) }
         } catch {
+            previewFailed = true
             message = String(localized: "这张长图暂时无法打开。原始文件仍保存在本机，请稍后重试。")
         }
     }
 
     private func beginExport(_ action: ExportAction) {
-        guard !isBusy else { return }
-        guard purchases.canExport(sessionID: sessionID) else { showUpgrade = true; return }
+        guard !isBusy, session?.hasImage == true, preview != nil else { return }
+        guard purchases.canExport(sessionID: sessionID) else {
+            message = String(localized: "本周免费额度已用完，下周一恢复。已导出的作品仍可重复保存和分享；捕捉、查看和编辑不受影响。")
+            return
+        }
         pendingAction = action
         Task { await runExport() }
     }

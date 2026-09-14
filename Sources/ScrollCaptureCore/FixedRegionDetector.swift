@@ -18,8 +18,11 @@ public enum FixedRegionDetector {
                                downwardDisplacement: Int) -> Resolution {
         let height = reference.height
         guard reference.width == current.width, height == current.height,
-              height >= 40, downwardDisplacement > 0,
-              downwardDisplacement < height / 2 else { return .ambiguous }
+              height >= 40, downwardDisplacement != 0,
+              downwardDisplacement > -(height / 2), downwardDisplacement < height / 2 else { return .ambiguous }
+        if downwardDisplacement < 0 {
+            return resolve(reference: current, current: reference, downwardDisplacement: -downwardDisplacement)
+        }
         let limit = height * 3 / 10
         guard let top = boundary(reference: reference, current: current,
                                  displacement: downwardDisplacement, limit: limit, fromTop: true),
@@ -27,6 +30,55 @@ public enum FixedRegionDetector {
                                     displacement: downwardDisplacement, limit: limit, fromTop: false),
               top + bottom < height - 12 else { return .ambiguous }
         return .resolved(Insets(top: top, bottom: bottom))
+    }
+
+    /// Candidate boundaries delimit the part used for matching, not permission
+    /// to discard pixels. Callers MUST preserve complete outer frame edges when
+    /// using these candidates. Blank rows and a changing clock are intentionally
+    /// allowed outside the moving evidence; replay must independently confirm
+    /// that a candidate produces the same displacement.
+    public static func candidates(reference: GrayFrame, current: GrayFrame,
+                                  displacement: Int) -> [Insets] {
+        guard reference.width == current.width, reference.height == current.height,
+              reference.height >= 40, displacement != 0,
+              displacement > -(reference.height / 2), displacement < reference.height / 2 else { return [] }
+        if displacement < 0 {
+            return candidates(reference: current, current: reference, displacement: -displacement)
+        }
+        if case .resolved(let exact) = resolve(reference: reference, current: current,
+                                               downwardDisplacement: displacement) {
+            return [exact]
+        }
+        let limit = reference.height * 3 / 10
+        func evidence(fromTop: Bool) -> Int? {
+            var moving: [Int] = []
+            let supportWindow = max(12, reference.height / 12)
+            // The boundary may lie at the search limit. Collect its supporting
+            // body rows beyond that limit rather than requiring all evidence
+            // to fit inside the area we may exclude from matching.
+            let evidenceLimit = min(reference.height - displacement - 1, limit + supportWindow)
+            for distance in 0...evidenceLimit {
+                let y = fromTop ? distance : reference.height - 1 - distance
+                let stationary = rowError(reference, row: y, current, row: y)
+                let motion = fromTop
+                    ? rowError(reference, row: y + displacement, current, row: y)
+                    : rowError(reference, row: y, current, row: y - displacement)
+                // Require an actual moving feature. Merely similar white rows
+                // cannot establish a boundary or a displacement.
+                if motion <= 4, stationary - motion >= 4 { moving.append(distance) }
+            }
+            guard let first = moving.first, first <= limit,
+                  moving.filter({ $0 <= first + supportWindow }).count >= 3 else { return nil }
+            return first
+        }
+        guard let top = evidence(fromTop: true), let bottom = evidence(fromTop: false),
+              top + bottom < reference.height - 12 else { return [] }
+        // Offer conservative alternatives to the replay verifier. The first
+        // preserves the largest matching body; the second excludes uncertain
+        // leading/trailing blank runs while visible outer edges remain intact.
+        let raw = [Insets(top: top, bottom: bottom),
+                   Insets(top: max(0, top - 2), bottom: max(0, bottom - 2))]
+        return raw.reduce(into: []) { result, item in if !result.contains(item) { result.append(item) } }
     }
 
     private static func boundary(reference: GrayFrame, current: GrayFrame,

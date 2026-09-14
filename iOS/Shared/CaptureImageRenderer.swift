@@ -2,6 +2,7 @@
 import UIKit
 import ImageIO
 import UniformTypeIdentifiers
+import ScrollCaptureCore
 
 public struct CaptureRenderDimensions: Equatable, Sendable {
     public let pixelWidth: Int
@@ -13,7 +14,7 @@ extension CaptureSessionRepository {
     /// Write each original-resolution strip before publishing the manifest that references it.
     /// A crash can leave an orphan strip, but can never publish an incomplete image file.
     public func appendStrip(image: CGImage, sourceTopPixel: Int = 0,
-                            to manifest: inout CaptureSessionManifest) throws {
+                            placement: StitchDecision.Placement = .append, to manifest: inout CaptureSessionManifest) throws {
         guard manifest.status == .capturing, image.width <= 8_192, image.height <= 16_384,
               manifest.pixelWidth == 0 || manifest.pixelWidth == image.width else {
             throw CaptureStorageError.invalidManifest
@@ -23,10 +24,129 @@ extension CaptureSessionRepository {
                                  pixelHeight: image.height, sourceTopPixel: sourceTopPixel)
         let finalURL = try stripURL(strip, sessionID: manifest.id)
         try Self.writeImage(image, to: finalURL, format: .png)
+        let publishedCandidate = try loadSession(id: manifest.id).provisionalFrame
         var updated = manifest
-        updated.pixelWidth = image.width; updated.strips.append(strip); updated.updatedAt = Date()
+        updated.pixelWidth = image.width
+        if placement == .prepend { updated.strips.insert(strip, at: 0) }
+        else { updated.strips.append(strip) }
+        updated.updatedAt = Date(); updated.provisionalFrame = nil
         try saveManifest(updated)
+        if let candidate = publishedCandidate,
+           let url = try? stripURL(candidate, sessionID: manifest.id) { try? FileManager.default.removeItem(at: url) }
         manifest = updated
+    }
+
+    /// Publish the replacement still before releasing the old one. A fresh
+    /// repository in the host can recover it if the capture process vanishes.
+    @discardableResult
+    func stageProvisionalFrame(image: CGImage, sessionID: UUID) throws -> CaptureStrip {
+        var session = try loadSession(id: sessionID)
+        guard session.status == .capturing, session.strips.isEmpty else {
+            throw CaptureStorageError.invalidManifest
+        }
+        let id = UUID()
+        let candidate = CaptureStrip(id: id, fileName: "\(id.uuidString).png", pixelWidth: image.width,
+                                     pixelHeight: image.height)
+        let url = try stripURL(candidate, sessionID: sessionID)
+        try Self.writeImage(image, to: url, format: .png)
+        let previous = session.provisionalFrame
+        session.provisionalFrame = candidate; session.updatedAt = Date()
+        do { try saveManifest(session) }
+        catch { try? FileManager.default.removeItem(at: url); throw error }
+        if let previous, let old = try? stripURL(previous, sessionID: sessionID) {
+            try? FileManager.default.removeItem(at: old)
+        }
+        return candidate
+    }
+
+    /// Commit an entire admitted frame transaction: all body strips and both
+    /// visible outer edges become reachable together. Failure leaves the old
+    /// manifest and its continuous image intact. Only superseded edge files
+    /// owned by this transaction are removed after publication succeeds.
+    @discardableResult
+    func commit(_ result: CaptureFrameResult, maximumBodyHeight: Int,
+                to manifest: inout CaptureSessionManifest) throws -> Bool {
+        guard manifest.status == .capturing, maximumBodyHeight > 0 else {
+            throw CaptureStorageError.invalidManifest
+        }
+        let publishedCandidate = try loadSession(id: manifest.id).provisionalFrame
+        var updated = manifest
+        updated.provisionalFrame = publishedCandidate
+        var newURLs: [URL] = []
+        var committed = false
+        defer { if !committed { for url in newURLs { try? FileManager.default.removeItem(at: url) } } }
+        func encode(_ image: CGImage, sourceTop: Int) throws -> CaptureStrip {
+            guard image.width > 0, image.height > 0,
+                  updated.pixelWidth == 0 || updated.pixelWidth == image.width else {
+                throw CaptureStorageError.invalidManifest
+            }
+            let id = UUID()
+            let strip = CaptureStrip(id: id, fileName: "\(id.uuidString).png", pixelWidth: image.width,
+                                     pixelHeight: image.height, sourceTopPixel: sourceTop)
+            let url = try stripURL(strip, sessionID: updated.id)
+            try autoreleasepool { try Self.writeImage(image, to: url, format: .png) }
+            newURLs.append(url); updated.pixelWidth = image.width
+            return strip
+        }
+        func replaceEdge(image: CGImage, rows: Range<Int>, leading: Bool) throws {
+            guard !rows.isEmpty else { return }
+            guard let cropped = image.cropping(to: CGRect(x: 0, y: rows.lowerBound, width: image.width,
+                                                          height: rows.count)) else {
+                throw CaptureStorageError.imageEncodingFailed
+            }
+            let strip = try encode(cropped, sourceTop: rows.lowerBound)
+            let oldID = leading ? updated.leadingEdgeStripID : updated.trailingEdgeStripID
+            updated.strips.removeAll { $0.id == oldID }
+            if leading { updated.strips.insert(strip, at: 0); updated.leadingEdgeStripID = strip.id }
+            else { updated.strips.append(strip); updated.trailingEdgeStripID = strip.id }
+        }
+        for pending in result.strips {
+            let remaining = max(0, maximumBodyHeight - updated.bodyPixelHeight)
+            let count = min(pending.image.height, remaining)
+            guard count > 0 else { break }
+            // At a quota boundary the retained rows must touch the existing
+            // seam: bottom of a prepended head, top of an appended tail.
+            let skipped = pending.placement == .prepend ? pending.image.height - count : 0
+            guard let image = pending.image.cropping(to: CGRect(x: 0, y: skipped, width: pending.image.width,
+                                                                height: count)) else {
+                throw CaptureStorageError.imageEncodingFailed
+            }
+            let sourceTop = pending.sourceTopPixel + skipped
+            let strip = try encode(image, sourceTop: sourceTop)
+            if pending.placement == .prepend {
+                let index = updated.leadingEdgeStripID == nil ? 0 : 1
+                updated.strips.insert(strip, at: index)
+            } else {
+                let index = updated.trailingEdgeStripID == nil ? updated.strips.count : updated.strips.count - 1
+                updated.strips.insert(strip, at: index)
+            }
+            if let full = pending.fullImage {
+                if pending.isInitial || pending.placement == .prepend {
+                    try replaceEdge(image: full, rows: (sourceTop - pending.topInset)..<sourceTop, leading: true)
+                }
+                if pending.isInitial || pending.placement == .append {
+                    let end = sourceTop + count
+                    try replaceEdge(image: full, rows: end..<(end + pending.bottomInset), leading: false)
+                }
+            }
+            if !pending.isInitial { updated.outputKind = .stitched }
+            if updated.bodyPixelHeight >= maximumBodyHeight { break }
+        }
+        guard newURLs.count > 0 else { return updated.bodyPixelHeight >= maximumBodyHeight }
+        updated.updatedAt = Date(); updated.provisionalFrame = nil
+        try saveManifest(updated)
+        committed = true
+        if let candidate = publishedCandidate,
+           let url = try? stripURL(candidate, sessionID: manifest.id) { try? FileManager.default.removeItem(at: url) }
+        let retained = Set(updated.strips.map(\.id))
+        // Include transient edge files created earlier in this same transaction.
+        let retainedURLs = Set(try updated.strips.map { try stripURL($0, sessionID: updated.id) })
+        for old in manifest.strips where !retained.contains(old.id) {
+            if let url = try? stripURL(old, sessionID: manifest.id) { try? FileManager.default.removeItem(at: url) }
+        }
+        for url in newURLs where !retainedURLs.contains(url) { try? FileManager.default.removeItem(at: url) }
+        manifest = updated
+        return updated.bodyPixelHeight >= maximumBodyHeight
     }
 
     static func writeImage(_ image: CGImage, to url: URL, format: CaptureExportFormat) throws {

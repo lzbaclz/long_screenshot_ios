@@ -8,12 +8,19 @@ struct StepReport: Codable {
     let observedStatus: String
     let expectedOffset: Int
     let observedOffset: Int
+    let expectedEarliestOffset: Int
+    let observedEarliestOffset: Int
+    let expectedFurthestOffset: Int
+    let observedFurthestOffset: Int
+    let expectedPlacement: String
+    let observedPlacement: String
     let expectedSourceRows: [Int]?
     let observedSourceRows: [Int]?
     let expectedPixelRows: Int
     let observedPixelRows: Int
     let expectedRejection: String?
     let observedRejection: String?
+    let pixelExact: Bool
     let confidence: Double
     let elapsedMilliseconds: Double
 }
@@ -94,7 +101,7 @@ struct BenchmarkMain {
                 }
             }
             let report = BenchmarkReport(
-                schemaVersion: 1, fixtureVersion: 1,
+                schemaVersion: 2, fixtureVersion: 2,
                 generatedAt: ISO8601DateFormatter().string(from: Date()), evidenceKind: "deterministic_synthetic_core_only",
                 limitations: [
                     "Synthetic grayscale canvases; not real G1 acceptance cases, ReplayKit captures, user sessions or device tests.",
@@ -134,6 +141,8 @@ struct BenchmarkMain {
         var failures: [String] = []
         var expectedOffset = 0
         var expectedFurthest = 0
+        var expectedEarliest = 0
+        let origin = fixture.steps.first?.offset ?? 0
         var maximumReferences = 0
 
         for (index, step) in fixture.steps.enumerated() {
@@ -142,6 +151,25 @@ struct BenchmarkMain {
             case .document:
                 frame = try canvas.frame(offset: step.offset, bodyHeight: fixture.bodyHeight,
                                          top: fixture.top, bottom: fixture.bottom)
+            case .animatedDocument:
+                let clean = try canvas.frame(offset: step.offset, bodyHeight: fixture.bodyHeight,
+                                             top: fixture.top, bottom: fixture.bottom)
+                var pixels = clean.pixels
+                // Controlled loading changes and a moving thin indicator stay
+                // in overlap so emitted strips have an independent clean oracle.
+                let patchStart = fixture.top + fixture.bodyHeight / 2
+                for y in patchStart..<(patchStart + fixture.bodyHeight / 20) {
+                    for x in (fixture.width / 4)..<(fixture.width / 2) {
+                        pixels[y * fixture.width + x] = UInt8(100 + index % 60)
+                    }
+                }
+                let indicatorStart = fixture.top + fixture.bodyHeight / 3 + index * 7
+                for y in indicatorStart..<(indicatorStart + fixture.bodyHeight / 12) {
+                    for x in (fixture.width - 4)..<fixture.width {
+                        pixels[y * fixture.width + x] = UInt8(30 + index % 20)
+                    }
+                }
+                frame = try GrayFrame(width: clean.width, height: clean.height, pixels: pixels)
             case .changedScene:
                 let other = Canvas(width: fixture.width, height: fixture.bodyHeight * fixture.depth,
                                    pattern: fixture.pattern, seed: fixture.seed + 90_001)
@@ -156,22 +184,29 @@ struct BenchmarkMain {
 
             let expectedStatus: StitchDecision.Status
             let expectedRows: Range<Int>?
+            let expectedPlacement: StitchDecision.Placement
+            let relativeOffset = step.offset - origin
+            expectedPlacement = step.expectedRejection == nil && relativeOffset < expectedEarliest ? .prepend : .append
             if step.expectedRejection != nil {
                 expectedStatus = .rejected
                 expectedRows = nil
             } else if index == 0 {
                 expectedStatus = .started
                 expectedRows = fixture.top..<(fixture.top + fixture.bodyHeight)
-            } else if step.offset > expectedFurthest {
+            } else if relativeOffset < expectedEarliest {
                 expectedStatus = .advanced
-                expectedRows = (fixture.top + fixture.bodyHeight - (step.offset - expectedFurthest))..<(fixture.top + fixture.bodyHeight)
+                expectedRows = fixture.top..<(fixture.top + expectedEarliest - relativeOffset)
+            } else if relativeOffset > expectedFurthest {
+                expectedStatus = .advanced
+                expectedRows = (fixture.top + fixture.bodyHeight - (relativeOffset - expectedFurthest))..<(fixture.top + fixture.bodyHeight)
             } else {
-                expectedStatus = step.offset == expectedOffset ? .unchanged : .backtracked
+                expectedStatus = relativeOffset == expectedOffset ? .unchanged : .backtracked
                 expectedRows = nil
             }
             if step.expectedRejection == nil {
-                expectedOffset = step.offset
-                expectedFurthest = max(expectedFurthest, step.offset)
+                expectedOffset = relativeOffset
+                expectedEarliest = min(expectedEarliest, relativeOffset)
+                expectedFurthest = max(expectedFurthest, relativeOffset)
             }
 
             let start = ContinuousClock.now
@@ -180,7 +215,11 @@ struct BenchmarkMain {
             maximumReferences = max(maximumReferences, stitcher.referenceCount)
             if let rows = decision.sourceRows {
                 if rows.lowerBound >= 0 && rows.upperBound <= frame.height {
-                    output.append(contentsOf: frame.pixels[(rows.lowerBound * frame.width)..<(rows.upperBound * frame.width)])
+                    let pixels = frame.pixels[(rows.lowerBound * frame.width)..<(rows.upperBound * frame.width)]
+                    switch decision.placement {
+                    case .append: output.append(contentsOf: pixels)
+                    case .prepend: output.insert(contentsOf: pixels, at: 0)
+                    }
                 } else {
                     failures.append("step \(index): output row range outside frame")
                 }
@@ -194,24 +233,35 @@ struct BenchmarkMain {
             if decision.sourceRows != expectedRows {
                 failures.append("step \(index): retained row range differs from ground truth")
             }
-            if decision.contentOffset != expectedOffset || decision.furthestOffset != expectedFurthest {
-                failures.append("step \(index): expected offset/furthest \(expectedOffset)/\(expectedFurthest), got \(decision.contentOffset)/\(decision.furthestOffset)")
+            if decision.placement != expectedPlacement {
+                failures.append("step \(index): expected placement \(expectedPlacement.rawValue), got \(decision.placement.rawValue)")
             }
+            if decision.contentOffset != expectedOffset || decision.furthestOffset != expectedFurthest
+                || decision.earliestOffset != expectedEarliest {
+                failures.append("step \(index): expected offset/earliest/furthest \(expectedOffset)/\(expectedEarliest)/\(expectedFurthest), got \(decision.contentOffset)/\(decision.earliestOffset)/\(decision.furthestOffset)")
+            }
+            let expectedRange = ((origin + expectedEarliest) * fixture.width)..<((origin + expectedFurthest + fixture.bodyHeight) * fixture.width)
+            let stepPixelExact = output.elementsEqual(canvas.pixels[expectedRange])
+            if !stepPixelExact { failures.append("step \(index): output pixels differ from independent document interval") }
             reports.append(StepReport(index: index, fixtureOffset: step.offset,
                                       expectedStatus: expectedStatus.rawValue, observedStatus: decision.status.rawValue,
                                       expectedOffset: expectedOffset, observedOffset: decision.contentOffset,
+                                      expectedEarliestOffset: expectedEarliest, observedEarliestOffset: decision.earliestOffset,
+                                      expectedFurthestOffset: expectedFurthest, observedFurthestOffset: decision.furthestOffset,
+                                      expectedPlacement: expectedPlacement.rawValue, observedPlacement: decision.placement.rawValue,
                                       expectedSourceRows: expectedRows.map { [$0.lowerBound, $0.upperBound] },
                                       observedSourceRows: decision.sourceRows.map { [$0.lowerBound, $0.upperBound] },
                                       expectedPixelRows: expectedRows?.count ?? 0,
                                       observedPixelRows: decision.sourceRows?.count ?? 0,
                                       expectedRejection: step.expectedRejection?.rawValue,
                                       observedRejection: decision.rejection?.rawValue,
+                                      pixelExact: stepPixelExact,
                                       confidence: decision.confidence, elapsedMilliseconds: duration))
         }
-        let expectedPixelRows = fixture.bodyHeight + expectedFurthest
-        let expectedPixels = Array(canvas.pixels.prefix(expectedPixelRows * fixture.width))
+        let expectedPixelRows = fixture.bodyHeight + expectedFurthest - expectedEarliest
+        let expectedPixels = Array(canvas.pixels[((origin + expectedEarliest) * fixture.width)..<((origin + expectedFurthest + fixture.bodyHeight) * fixture.width)])
         let exact = expectedPixels == output
-        if !exact { failures.append("retained output pixels differ from ground-truth canvas prefix") }
+        if !exact { failures.append("retained output pixels differ from ground-truth canvas interval") }
         if maximumReferences > 3 { failures.append("reference count exceeded configured history limit") }
 
         return CaseReport(id: fixture.id, group: fixture.group, pattern: fixture.pattern.rawValue,
@@ -256,10 +306,10 @@ struct BenchmarkMain {
             "- 通过：\(report.passedCases) / \(report.totalCases)；失败：\(report.failedCases)",
             "- 常规：\(report.coreCases)；压力：\(report.stressCases)；处理帧数：\(report.frames)",
             "- 总耗时：\(format(report.totalWallMilliseconds)) ms；其中匹配：\(format(report.totalMatchingMilliseconds)) ms", "",
-            "常规用例为 6 类画布 × 5 / 10 / 20 屏深度 × 5 种滚动、裁剪或回退方式。压力用例覆盖周期歧义、断层后恢复、新场景、尺寸变化、重叠不足和低对比度歧义。预期拒绝属于通过条件。", "",
-            "输出逐像素与独立生成的原始画布前缀比较；FNV-1a 64 位指纹便于复核，不用于安全校验。每帧预期/实际位置、条带行、置信度、拒绝原因和时间在同目录 report.json。", "",
+            "常规用例为 7 类画布 × 5 / 10 / 20 屏深度 × 8 种滚动、裁剪或回退方式，包括向上起步、双向穿越与稀疏文字大空白。压力用例覆盖周期歧义、双向断层后恢复、新场景、尺寸变化、重叠不足和低对比度歧义；另有 144×2556 分析区的文字/图文/纹理用例，含停顿、有限加载变化和细滚动条，记录本机匹配耗时。预期拒绝属于通过条件。", "",
+            "每帧输出逐像素与独立生成的原始画布已覆盖区间比较，允许在头部添加新内容并保持自然阅读顺序；FNV-1a 64 位指纹便于复核，不用于安全校验。每帧预期/实际位置、两端边界、插入方向、条带行、置信度、拒绝原因和时间在同目录 report.json。", "",
             "分类说明：complete 表示序列没有拒绝；rejected 表示至少一次非歧义拒绝（可能随后恢复）；ambiguous 表示至少一次歧义拒绝。分类不是质量分数，应结合通过列与逐像素一致性。", "",
-            "本机时间不代表 iPhone 性能；未测 ReplayKit、内存、耗电、真实页面加载、透明导航栏或视觉接缝。120 项是受控参数组合，不是独立现实样本，通过比例不能估计真实成功率。总耗时涵盖夹具生成和验证，不含编译和报告落盘。", "",
+            "本机时间不代表 iPhone 性能；未测 ReplayKit、内存、耗电、真实页面加载、透明导航栏或视觉接缝。\(report.totalCases) 项是受控参数组合，不是独立现实样本，通过比例不能估计真实成功率。总耗时涵盖夹具生成和验证，不含编译和报告落盘。", "",
             "| 用例 | 组 / 图案 / 方式 | 深度 | 帧 | 预期 / 实际分类 | 预期 / 实际保留行 | 像素一致 | 通过 | 最慢帧 ms |",
             "| --- | --- | ---: | ---: | --- | ---: | --- | --- | ---: |"
         ]
