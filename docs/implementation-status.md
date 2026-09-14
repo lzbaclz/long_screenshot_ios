@@ -4,7 +4,7 @@
 
 ## 当前交付
 
-**0.1.3（4）已完成本地验收，正在手动打包分发。** 本轮依据新反馈补上固定照片壁纸、独立滚动消息的模型，修复暂停即结束、旧参考误否决和起点重定问题。核心 65 项、原生与像素 74 项、无可见人工编号的真实模拟器拖动 3 条路线及保存／分享回归通过。详见 [0.1.3 更新记录](release/0.1.3-testflight.md)；下方历史版本状态保留作对照，实际手机微信效果仍由新 Beta 验证。
+**0.1.3（4）已开放内部 TestFlight，原组状态已确认“正在测试”。** 本轮依据新反馈补上固定照片壁纸、独立滚动消息的模型，修复暂停即结束、旧参考误否决和起点重定问题。核心 66 项、原生与像素 74 项、无可见人工编号的真实模拟器拖动 3 条路线及保存／分享回归通过。详见 [0.1.3 更新记录](release/0.1.3-testflight.md)；现有测试员可更新。下方历史版本状态保留作对照，实际手机微信效果仍需用新 Beta 复测。
 
 **0.1.2（3）已开放内部 TestFlight，原组状态已确认“正在测试”。** 用户反馈 0.1.1 的向下浏览正常，聊天从最新消息往前翻仍只保留首屏；本轮复现并修复自动区域与窄中文气泡两类限制，核心 57 项、原生与像素 54 项、217 组合成基准及保存／分享回归均通过。详见 [0.1.2 更新记录](release/0.1.2-testflight.md)。真实微信效果仍需用户更新后复测。
 
@@ -24,7 +24,7 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 
 | 类别 | 实际结果 | 范围与证据 |
 | --- | --- | --- |
-| Swift 核心回归 | 65 / 65 通过 | 固定壁纸前景、双向、平滑纹理、配置边界、安全拒绝；`.work/layered-core-full.log` |
+| Swift 核心回归 | 66 / 66 通过 | 固定壁纸前景、双向、平滑纹理、配置边界、安全拒绝；`.work/beta4-validation/core-final.log` |
 | 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/beta4-validation/benchmark/report.json`，不计入真机 G1 或真实成功率 |
 | 本地原生单元与像素验收 | 74 / 74 通过，0 跳过 | iOS Simulator 26.3.1；`.work/beta4-validation/unit-final.xcresult`，含原生壁纸前景全部不透明像素、暂停后未知间隔及实际 PNG |
 | 模拟器真实滚动截图注入 | 3 / 3 通过，0 跳过 | `.work/beta4-validation/simulator-final.xcresult`；53 帧、47 次真实拖动，逐条核对消息顺序，无可见人工编号；不是 ReplayKit 真机测试 |
@@ -40,7 +40,7 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 ## 环境与构建基线
 
 - 上传构建使用 Xcode 26.3、iPhoneOS SDK 26.2，最低 iOS 18；通过命令设置 `DEVELOPER_DIR`，未修改全局 Xcode 配置。
-- 本地主流程使用独立 `LongScreenshot-Dev` 模拟器；照片拒绝补充使用独立 `Longlet-PhotosDenied` 模拟器，系统版本均为 26.3.1。
+- 本轮真实滚动使用 `Longlet-Beta2`，原生单元回归在另一台自有 `Longlet-PhotosDenied` 模拟器执行，均为 iOS 26.3.1；原生单元未操作照片权限。历史开发使用 `LongScreenshot-Dev`，历史 Photos 拒绝验证另行保留。
 - 上传 IPA 已使用 Apple Distribution 签名；主应用、广播扩展与共享 App Group 的打包配置均经静态审计。真实设备安装及跨 App 行为仍待用户验证。
 - 本地没有 iOS 27 SDK；远程已通过该 SDK 的设备目标编译。相关实验代码单独推进，**已上传 Beta 未启用或链接 ScreenCaptureKit 后端**，不能用于证明 iOS 27 实验能力。
 
