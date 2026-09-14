@@ -1,6 +1,6 @@
 # iOS 27 ScreenCaptureKit 实验后端
 
-状态：已按 Apple 官方 iOS 27 示例及符号文档实现。设备 SDK 27 CI 已进入实验适配器类型检查，发现五个实际标为 iOS 不可用的配置属性；本地已移除这些调用，**修复尚待新一轮 SDK 27 编译，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
+状态：已按 Apple 官方 iOS 27 示例及符号文档实现。设备 SDK 27 CI 已进入实验适配器编译；五个配置属性的可用性问题已从后续诊断中消失，随后发现两处跨 actor 传递可变流对象的错误。本地已改为传递流身份和布尔值，**最新修复尚待新一轮 SDK 27 编译，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
 
 两个 Swift 文件的全部内容由 `#if CAPTUREKIT_IOS27 && os(iOS)` 包围，类型标记为 `@available(iOS 27.0, *)`。默认 UI 与 ReplayKit 扩展没有替换。本目录不修改工程签名、Info.plist、生产默认值或购买功能。
 
@@ -63,7 +63,7 @@ if #available(iOS 27.0, *) {
 | --- | --- | --- |
 | SDK 26.2，开关关闭，共享代码与 ReplayKit 完整代码生成 | 2026-09-14 本机通过 | `swiftc -emit-object -whole-module-optimization -swift-version 6 -strict-concurrency=complete -application-extension`，包含本目录且未设置开关 |
 | 仅语法解析，开关开启 | 2026-09-14 本机通过；不是类型检查 | `swiftc -frontend -parse -D CAPTUREKIT_IOS27 ... iOS/Experimental/*.swift` |
-| Xcode / SDK 27，开关开启真实编译 | **已进入设备 SDK 类型检查；五处可用性调用已本地修复，等待重跑** | 下方第二次 CI 记录 |
+| Xcode / SDK 27，开关开启真实编译 | **五处可用性错误已消失；两处跨 actor 传递错误本地已修复，等待重跑** | 下方第三次 CI 记录 |
 | iOS 27 真机选择器、授权、整屏与后台 | **未执行** | — |
 | 与 ReplayKit 相同内容的像素/丢帧/内存比较 | **未执行** | — |
 | 停止期间启动、取消后的旧回调、来源更改 | **未执行** | — |
@@ -108,3 +108,11 @@ CI 必须同时记录 `xcodebuild -version`、所选 SDK、开关值及退出码
 该 SDK 的队列深度注释描述默认八帧，而先前在线文档描述三帧；这进一步说明不能将线上跨平台说明当成 iOS 实测内存上限。具体缓冲、输入格式和输出比例需要目标设备测量。
 
 修复仅修改实验协调器及本文，未修改默认 ReplayKit、生产 Beta、工程或工作流。开关开启的本地语法解析与 `git diff --check` 可验证语法/格式，但本机没有 SDK 27，不能将它们视为修复后类型检查通过；下一次由维护者推送后读取 CI 的真实结果。原始日志保存在 `.work/ios27-ci-audit/job-103815554095.log`。
+
+## 2026-09-14 第三次新 SDK CI 与并发修复
+
+[run 34791576291 / job 103816844183](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34791576291/job/103816844183) 继续使用设备 SDK 27，未再报告前述五个属性错误。本次仅报告两处 `sending 'stream' risks causing data races`，来自 picker 选择和取消回调将 `SCStream?` 捕获到 MainActor 任务。
+
+这些回调仅需要区分流身份或初次选择，因此本地修复不增加流对象的 `@unchecked Sendable` 声明：在回调队列上取 `ObjectIdentifier` / `Bool`，只把这些 Sendable 值送入 MainActor，再与协调器持有的流核对。系统停止回调也使用相同身份传递方式，实际流操作继续留在 MainActor。
+
+本地开关开启的语法解析和格式检查通过；新 SDK 完整编译结果仍等待后续 CI。没有重新推送、取消正常 iOS 测试任务或修改已上传的 Beta。原始日志位于 `.work/ios27-ci-audit/job-103816844183.log`。

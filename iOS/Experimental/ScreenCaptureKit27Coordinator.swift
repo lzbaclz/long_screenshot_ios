@@ -57,10 +57,10 @@ public final class ScreenCaptureKit27Coordinator: ObservableObject {
         deactivatePicker()
     }
 
-    fileprivate func selected(_ filter: SCContentFilter, updating existing: SCStream?, token: UUID) async {
+    fileprivate func selected(_ filter: SCContentFilter, updating existing: ObjectIdentifier?, token: UUID) async {
         guard generation == token else { return }
         if let existing {
-            guard stream === existing else { return }
+            guard let stream, ObjectIdentifier(stream) == existing else { return }
             await stopCurrent(reason: "画面无法可靠衔接，已保存连续部分。请降低滑动速度或调整捕捉区域后重试。", partial: true)
             return
         }
@@ -112,8 +112,8 @@ public final class ScreenCaptureKit27Coordinator: ObservableObject {
         }
     }
 
-    fileprivate func pickerCancelled(for existing: SCStream?, token: UUID) {
-        guard generation == token, existing == nil, phase == .choosing else { return }
+    fileprivate func pickerCancelled(isInitialSelection: Bool, token: UUID) {
+        guard generation == token, isInitialSelection, phase == .choosing else { return }
         generation = UUID(); pendingConfiguration = nil; phase = .idle
         deactivatePicker()
     }
@@ -124,8 +124,8 @@ public final class ScreenCaptureKit27Coordinator: ObservableObject {
         phase = .failed; message = description
     }
 
-    fileprivate func systemStopped(_ stopped: SCStream, description: String, partial: Bool = true) async {
-        guard stream === stopped else { return }
+    fileprivate func systemStopped(_ stopped: ObjectIdentifier, description: String, partial: Bool = true) async {
+        guard let stream, ObjectIdentifier(stream) == stopped else { return }
         await stopCurrent(reason: description, partial: partial)
     }
 
@@ -179,7 +179,8 @@ public final class ScreenCaptureKit27Coordinator: ObservableObject {
 }
 
 /// Apple invokes picker and stream delegate methods off the main actor. This bridge
-/// holds only a weak actor reference; captured framework objects are used on the main actor.
+/// holds only a weak actor reference. Stream identity is reduced to a Sendable value
+/// on the callback queue; mutable SCStream instances remain owned by the main actor.
 @available(iOS 27.0, *)
 private final class ScreenCaptureKit27Observer: NSObject, SCContentSharingPickerObserver, SCStreamDelegate,
                                                 @unchecked Sendable {
@@ -192,12 +193,18 @@ private final class ScreenCaptureKit27Observer: NSObject, SCContentSharingPicker
     nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter,
                                          for stream: SCStream?) {
         let token = generation
-        Task { @MainActor [weak coordinator] in await coordinator?.selected(filter, updating: stream, token: token) }
+        let streamIdentity = stream.map(ObjectIdentifier.init)
+        Task { @MainActor [weak coordinator] in
+            await coordinator?.selected(filter, updating: streamIdentity, token: token)
+        }
     }
 
     nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
         let token = generation
-        Task { @MainActor [weak coordinator] in coordinator?.pickerCancelled(for: stream, token: token) }
+        let isInitialSelection = stream == nil
+        Task { @MainActor [weak coordinator] in
+            coordinator?.pickerCancelled(isInitialSelection: isInitialSelection, token: token)
+        }
     }
 
     nonisolated func contentSharingPickerStartDidFailWithError(_ error: Error) {
@@ -209,14 +216,16 @@ private final class ScreenCaptureKit27Observer: NSObject, SCContentSharingPicker
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         let userStopped = (error as? SCStreamError)?.code == .userStopped
         let description = userStopped ? "已手动结束捕捉。" : error.localizedDescription
+        let streamIdentity = ObjectIdentifier(stream)
         Task { @MainActor [weak coordinator] in
-            await coordinator?.systemStopped(stream, description: description, partial: !userStopped)
+            await coordinator?.systemStopped(streamIdentity, description: description, partial: !userStopped)
         }
     }
 
     nonisolated func streamDidBecomeInactive(_ stream: SCStream) {
+        let streamIdentity = ObjectIdentifier(stream)
         Task { @MainActor [weak coordinator] in
-            await coordinator?.systemStopped(stream, description: "捕捉已暂停，已保留成功捕捉的部分。请重新开始下一段。")
+            await coordinator?.systemStopped(streamIdentity, description: "捕捉已暂停，已保留成功捕捉的部分。请重新开始下一段。")
         }
     }
 }
