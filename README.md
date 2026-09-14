@@ -34,6 +34,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift run -c release Sc
 
 合成基准逐像素校验独立生成的真值画布；结果是算法测试，不计作 G1 真机验收。
 
+日常采用本地编译与关键测试 → 手动上传 TestFlight → 真机反馈修复的流程。云端 CI 仅保留 `workflow_dispatch` 手动触发，不随 push 或 PR 自动执行，也不作为日常测试版分发的前置条件；工作流进入默认分支后可按需从 GitHub Actions 手动运行。
+
 ## 模拟器
 
 在 Xcode 选择 iPhone 模拟器运行 `ScrollCapture` scheme。启动参数 `--demo` 创建明确标注的示例作品；`--uitesting` 仅重置专用演示目录。

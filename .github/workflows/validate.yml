@@ -1,8 +1,5 @@
 name: Validate Longlet
 on:
-  push:
-    branches: [main, 'feat/**', 'fix/**']
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read

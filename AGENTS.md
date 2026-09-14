@@ -7,3 +7,4 @@
 - 使用项目脚本选择 Xcode，避免全局修改 xcode-select。签名团队、证书和发布资料不得硬编码或提交到版本库。
 - Git 提交使用 `<type>(<scope>): <summary>`，正文说明原因及影响，并用 `Test:` 写实际执行的验证命令。
 - 阶段进展维护在 `docs/implementation-status.md`，外部账号、设备、真实用户和发布依赖必须如实标记。
+- 当前单人开发以本地必要测试、手动发布 TestFlight 和真机反馈为主。CI 仅保留手动触发，不自动随 push / PR 运行，也不作为日常 TestFlight 分发的前置条件；未经用户要求不扩大自动化流程。
