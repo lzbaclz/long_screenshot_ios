@@ -166,7 +166,8 @@ final class SampleHandler: RPBroadcastSampleHandler, @unchecked Sendable {
         }
         if !result.strips.isEmpty {
             let region = framePipeline.effectiveConfiguration
-            let maximumHeight = (height - region.topInset - region.bottomInset) * configuration.maximumScreenCount
+            let maximumHeight = configuration.maximumBodyPixelHeight(frameHeight: height,
+                matchingTopInset: region.topInset, matchingBottomInset: region.bottomInset)
             try checkpointStartup(stage: "firstCommit", storage: storage, session: &session)
             session.diagnostics?.lastStage = "storage"
             manifest = session

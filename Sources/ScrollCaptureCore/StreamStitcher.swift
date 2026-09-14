@@ -71,6 +71,38 @@ public struct StitchDecision: Equatable, Sendable {
     }
 }
 
+/// Shared matching evidence for the stitcher and automatic-region verifier.
+/// A narrow row can be informative without spanning a fraction of the screen:
+/// it must contain separate horizontal structures, not merely the two edges
+/// of one 1–3 pixel indicator. Returned bounds never authorize output cropping.
+enum AlignmentDetailSupport {
+    static func horizontalSpan(in frame: GrayFrame, row: Int) -> Range<Int>? {
+        let edge = max(1, frame.width / 24)
+        guard row >= 0, row < frame.height, frame.width > edge * 2 else { return nil }
+        let start = row * frame.width
+        var first: Int?
+        var last = 0
+        var count = 0
+        var separateStructures = false
+        for x in edge..<(frame.width - edge) {
+            let value = Int(frame.pixels[start + x])
+            let detail = max(abs(value - Int(frame.pixels[start + x - 1])),
+                             abs(value - Int(frame.pixels[start + x + 1])))
+            if detail >= 16 {
+                if first == nil { first = x }
+                else if x - last >= 3 { separateStructures = true }
+                last = x
+                count += 1
+            }
+        }
+        // A flat rectangle contributes only two step edges (at most four
+        // gradient pixels). Its loading/unloading is not text-like structure.
+        guard let first, count > 4,
+              last - first >= frame.width / 6 || separateStructures else { return nil }
+        return first..<(last + 1)
+    }
+}
+
 /// Conservative bidirectional vertical alignment. Unknown/ambiguous gaps never add rows.
 /// Memory is bounded by `maxHistory` grayscale frames (hard limit: 8).
 /// This type performs no video recording, UI capture, file access or networking.
@@ -78,6 +110,8 @@ public struct StreamStitcher: Sendable {
     private struct Reference: Sendable {
         let frame: GrayFrame
         let offset: Int
+        /// One optional pair of bounds per row, shared with the frame's lifetime.
+        let detailSpans: [Range<Int>?]
     }
 
     private struct Candidate {
@@ -98,6 +132,8 @@ public struct StreamStitcher: Sendable {
     public private(set) var earliestOffset = 0
     public private(set) var furthestOffset = 0
     public var referenceCount: Int { references.count }
+    /// Internal accounting for bounded-memory regression tests.
+    var cachedDetailRowCount: Int { references.reduce(0) { $0 + $1.detailSpans.count } }
     private var references: [Reference] = []
 
     public init(configuration: AlignmentConfiguration = .init()) {
@@ -115,7 +151,7 @@ public struct StreamStitcher: Sendable {
         guard validConfiguration(for: frame) else { return reject(.invalidConfiguration) }
         let bodyHeight = frame.height - configuration.topInset - configuration.bottomInset
         guard let latest = references.last else {
-            references.append(Reference(frame: frame, offset: 0))
+            references.append(Reference(frame: frame, offset: 0, detailSpans: detailSpans(for: frame)))
             return decision(.started, rows: configuration.topInset..<(frame.height - configuration.bottomInset), confidence: 1)
         }
         guard frame.width == latest.frame.width, frame.height == latest.frame.height else {
@@ -130,6 +166,7 @@ public struct StreamStitcher: Sendable {
 
         let overlap = Int(ceil(Double(bodyHeight) * configuration.minimumOverlap))
         let maximumShift = bodyHeight - overlap
+        let currentDetailSpans = detailSpans(for: frame)
         var refined: [Candidate] = []
 
         for (referenceIndex, reference) in references.enumerated() {
@@ -138,14 +175,16 @@ public struct StreamStitcher: Sendable {
             // Search every integer displacement; coarse *spatial* sampling avoids
             // losing a correct odd-pixel shift on sharp text or fine textures.
             for shift in -maximumShift...maximumShift {
-                let score = matchScore(reference.frame, frame, shift: shift, columns: 16, rows: 24)
+                let score = matchScore(reference, frame, currentDetailSpans: currentDetailSpans,
+                                       shift: shift, columns: 16, rows: 24)
                 coarse.append(Candidate(offset: reference.offset + shift, shift: shift,
                                         referenceIndex: referenceIndex, error: score.error,
                                         hasDistributedDetail: score.hasDistributedDetail))
             }
             coarse.sort(by: candidateOrder)
             for candidate in coarse.prefix(12) {
-                let score = matchScore(reference.frame, frame, shift: candidate.shift, columns: 48, rows: 96)
+                let score = matchScore(reference, frame, currentDetailSpans: currentDetailSpans,
+                                       shift: candidate.shift, columns: 48, rows: 96)
                 refined.append(Candidate(offset: candidate.offset, shift: candidate.shift,
                                          referenceIndex: referenceIndex, error: score.error,
                                          hasDistributedDetail: score.hasDistributedDetail))
@@ -181,7 +220,7 @@ public struct StreamStitcher: Sendable {
         // Keep the most recent trusted view, plus a small bounded history, for
         // short reversals and recovery after temporarily rejected frames.
         references.removeAll { $0.offset == best.offset }
-        references.append(Reference(frame: frame, offset: best.offset))
+        references.append(Reference(frame: frame, offset: best.offset, detailSpans: currentDetailSpans))
         if references.count > configuration.maxHistory {
             references.removeFirst(references.count - configuration.maxHistory)
         }
@@ -228,11 +267,16 @@ public struct StreamStitcher: Sendable {
         return a.pixels[start..<end].elementsEqual(b.pixels[start..<end])
     }
 
+    private func detailSpans(for frame: GrayFrame) -> [Range<Int>?] {
+        (0..<frame.height).map { AlignmentDetailSupport.horizontalSpan(in: frame, row: $0) }
+    }
+
     /// Compare both raw pixels and horizontally detailed pixels. Blank rows
     /// must not dilute competing text alignments into equally good matches.
     /// Trimming limits transient row animations; spatial support prevents a
     /// single icon or narrow scroll indicator from authorizing a join.
-    private func matchScore(_ reference: GrayFrame, _ current: GrayFrame,
+    private func matchScore(_ reference: Reference, _ current: GrayFrame,
+                            currentDetailSpans: [Range<Int>?],
                             shift: Int, columns: Int, rows: Int) -> MatchScore {
         let height = current.height - configuration.topInset - configuration.bottomInset
         let overlap = height - abs(shift)
@@ -243,49 +287,75 @@ public struct StreamStitcher: Sendable {
         var rowErrors: [Double] = []
         rowErrors.reserveCapacity(rowCount)
         var detailErrors: [Double] = []
+        var supportedRows = 0
         var firstDetailRow: Int?
         var lastDetailRow = 0
-        let edgeInset = max(1, current.width / 24)
 
         for rowIndex in 0..<rowCount {
-            let y = rowCount == 1 ? 0 : rowIndex * (overlap - 1) / (rowCount - 1)
-            let referenceRow = (referenceStart + y) * reference.width
+            // Pair samples across the overlap midpoint. Flooring each index
+            // independently selects different physical rows after a vertical
+            // mirror, which can hide sparse text/detail in only one layout.
+            // Keep the same sample count; short overlaps still visit every row.
+            let pairedIndex = min(rowIndex, rowCount - 1 - rowIndex)
+            let leadingY = rowCount == 1 ? 0 : pairedIndex * (overlap - 1) / (rowCount - 1)
+            let y = rowIndex * 2 < rowCount ? leadingY : overlap - 1 - leadingY
+            let referenceRow = (referenceStart + y) * reference.frame.width
             let currentRow = (currentStart + y) * current.width
             var total = 0
-            var detailTotal = 0
-            var detailCount = 0
-            var firstDetailColumn = current.width
-            var lastDetailColumn = 0
             for columnIndex in 0..<columnCount {
                 let x = columnCount == 1 ? 0 : columnIndex * (current.width - 1) / (columnCount - 1)
-                let referenceValue = Int(reference.pixels[referenceRow + x])
+                let referenceValue = Int(reference.frame.pixels[referenceRow + x])
                 let currentValue = Int(current.pixels[currentRow + x])
-                let difference = abs(referenceValue - currentValue)
-                total += difference
-                guard x >= edgeInset, x < current.width - edgeInset else { continue }
-                let referenceDetail = max(abs(referenceValue - Int(reference.pixels[referenceRow + x - 1])),
-                                          abs(referenceValue - Int(reference.pixels[referenceRow + x + 1])))
-                let currentDetail = max(abs(currentValue - Int(current.pixels[currentRow + x - 1])),
-                                        abs(currentValue - Int(current.pixels[currentRow + x + 1])))
-                if max(referenceDetail, currentDetail) >= 16 {
-                    detailTotal += difference
-                    detailCount += 1
-                    firstDetailColumn = min(firstDetailColumn, x)
-                    lastDetailColumn = max(lastDetailColumn, x)
-                }
+                total += abs(referenceValue - currentValue)
             }
             rowErrors.append(Double(total) / Double(columnCount))
-            if detailCount >= 3 && lastDetailColumn - firstDetailColumn >= current.width / 6 {
-                detailErrors.append(Double(detailTotal) / Double(detailCount))
+            let referenceSpan = reference.detailSpans[referenceStart + y]
+            let currentSpan = currentDetailSpans[currentStart + y]
+            // Penalize detail against blank space too: otherwise a wrong
+            // displacement can win by avoiding all shared text rows. Actual
+            // spatial support still requires structure in both input rows.
+            if let first = referenceSpan ?? currentSpan {
+                detailErrors.append(detailError(reference.frame, row: referenceRow, span: referenceSpan ?? first,
+                                                 current, row: currentRow, span: currentSpan ?? first, columns: columns))
+            }
+            if referenceSpan != nil && currentSpan != nil {
+                supportedRows += 1
                 if firstDetailRow == nil { firstDetailRow = y }
                 lastDetailRow = y
             }
         }
         let raw = robustError(rowErrors)
         let error = detailErrors.isEmpty ? raw : raw * 0.35 + robustError(detailErrors) * 0.65
-        let distributed = detailErrors.count >= 4
+        let distributed = supportedRows >= 4
             && lastDetailRow - (firstDetailRow ?? lastDetailRow) >= overlap / 4
         return MatchScore(error: error, hasDistributedDetail: distributed)
+    }
+
+    /// Spend the fixed detail-sampling budget inside informative bounds from
+    /// both rows. Disjoint left/right bubbles do not turn the blank space
+    /// between them into evidence, and neither input gets preferential sampling.
+    private func detailError(_ reference: GrayFrame, row referenceRow: Int, span referenceSpan: Range<Int>,
+                             _ current: GrayFrame, row currentRow: Int, span currentSpan: Range<Int>,
+                             columns: Int) -> Double {
+        var first = referenceSpan
+        var second: Range<Int>?
+        let left = referenceSpan.lowerBound <= currentSpan.lowerBound ? referenceSpan : currentSpan
+        let right = referenceSpan.lowerBound <= currentSpan.lowerBound ? currentSpan : referenceSpan
+        if left.upperBound >= right.lowerBound {
+            first = left.lowerBound..<max(left.upperBound, right.upperBound)
+        } else {
+            first = left; second = right
+        }
+        let available = first.count + (second?.count ?? 0)
+        let count = min(columns, available)
+        var total = 0
+        for index in 0..<count {
+            let position = count == 1 ? 0 : index * (available - 1) / (count - 1)
+            let x = position < first.count ? first.lowerBound + position
+                : (second?.lowerBound ?? first.upperBound) + position - first.count
+            total += abs(Int(reference.pixels[referenceRow + x]) - Int(current.pixels[currentRow + x]))
+        }
+        return Double(total) / Double(count)
     }
 
     private func robustError(_ errors: [Double]) -> Double {

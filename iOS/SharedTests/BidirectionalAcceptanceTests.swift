@@ -42,6 +42,55 @@ final class BidirectionalAcceptanceTests: XCTestCase {
         try assertAutomaticDocument(makeDocument(chat: false), offsets: [360, 323, 280, 250, 280, 320, 367])
     }
 
+    func testChatStartsUpwardWithLargePlainImageAtItsLowerEdge() throws {
+        let base = makeDocument(chat: true)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1; format.opaque = true
+        let document = UIGraphicsImageRenderer(size: CGSize(width: width, height: base.height), format: format).image { context in
+            UIImage(cgImage: base).draw(at: .zero)
+            UIColor(white: 0.88, alpha: 1).setFill()
+            context.fill(CGRect(x: 40, y: 870, width: 183, height: 650))
+        }.cgImage!
+        try assertAutomaticDocument(document, offsets: [700, 700, 680, 643, 607, 570])
+    }
+
+    func testChatStartsUpwardWithKeyboardAndPreservesBothOuterViews() throws {
+        let document = makeDocument(chat: true)
+        let offsets = [730, 730, 713, 676, 640, 603]
+        let fullHeight = top + bodyHeight + bottom
+        let visibleBody = 210
+        let keyboardAndInput = fullHeight - top - visibleBody
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("LongletKeyboardAcceptance-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = try CaptureSessionRepository(rootURL: root)
+        var manifest = try repository.createSession(configuration: .init())
+        let pipeline = CaptureFramePipeline(configuration: .init(), repository: repository, sessionID: manifest.id)
+        var views: [CGImage] = []
+        for (index, offset) in offsets.enumerated() {
+            let view = try makeKeyboardViewport(document, offset: offset, visibleBody: visibleBody, clock: index)
+            views.append(view)
+            let result = try pipeline.ingest(analysis(view)) { view }
+            _ = try repository.commit(result, maximumBodyHeight: 6_000, to: &manifest)
+            if !result.strips.isEmpty { pipeline.confirmCommit() }
+        }
+        XCTAssertTrue(pipeline.hasStarted, "A usable chat region above the keyboard must allow upward capture")
+        manifest.finalizeCapture(reason: "已手动结束捕捉。", partial: false)
+        try repository.saveManifest(manifest)
+        let output = try CaptureImageRenderer(repository: repository).export(sessionID: manifest.id)
+        let actual = try XCTUnwrap(UIImage(contentsOfFile: output.path)?.cgImage)
+        let earliest = try XCTUnwrap(offsets.min())
+        let latest = try XCTUnwrap(offsets.max())
+        let firstView = try XCTUnwrap(views.last)
+        let lastView = try XCTUnwrap(views.first)
+        let firstBar = try XCTUnwrap(firstView.cropping(to: CGRect(x: 0, y: 0, width: width, height: top)))
+        let body = try XCTUnwrap(document.cropping(to: CGRect(x: 0, y: earliest, width: width,
+                                                               height: latest - earliest + visibleBody)))
+        let lastBar = try XCTUnwrap(lastView.cropping(to: CGRect(x: 0, y: top + visibleBody,
+                                                               width: width, height: keyboardAndInput)))
+        XCTAssertEqual(actual.height, fullHeight + latest - earliest)
+        assertPixels(rgba(actual), rgba(firstBar) + rgba(body) + rgba(lastBar))
+    }
+
     private func assertAutomaticDocument(_ document: CGImage, offsets: [Int], file: StaticString = #filePath, line: UInt = #line) throws {
         let actual = try capture(document: document, offsets: offsets, automatic: true)
         let minimum = try XCTUnwrap(offsets.min())
@@ -145,6 +194,33 @@ final class BidirectionalAcceptanceTests: XCTestCase {
         format.scale = 1; format.opaque = true
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: 2_200), format: format)
         return renderer.image { context in drawMomentsPage(context) }.cgImage!
+    }
+
+    private func makeKeyboardViewport(_ document: CGImage, offset: Int, visibleBody: Int, clock: Int) throws -> CGImage {
+        let body = try XCTUnwrap(document.cropping(to: CGRect(x: 0, y: offset, width: width, height: visibleBody)))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1; format.opaque = true
+        let fullHeight = top + bodyHeight + bottom
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: fullHeight), format: format).image { context in
+            UIColor(white: 0.94, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: fullHeight))
+            UIImage(cgImage: body).draw(in: CGRect(x: 0, y: top, width: width, height: visibleBody))
+            ("09:\(String(format: "%02d", clock))   Chat" as NSString).draw(at: CGPoint(x: 12, y: 14),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: UIColor.black])
+            let inputY = top + visibleBody
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 30, y: inputY + 4, width: 176, height: 24))
+            for row in 0..<3 {
+                for column in 0..<9 {
+                    let key = CGRect(x: 8 + column * 25, y: inputY + 37 + row * 31, width: 21, height: 26)
+                    UIColor.white.setFill()
+                    UIBezierPath(roundedRect: key, cornerRadius: 4).fill()
+                    let title = String(UnicodeScalar(65 + row * 9 + column)!)
+                    (title as NSString).draw(at: CGPoint(x: key.minX + 6, y: key.minY + 5),
+                        withAttributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.black])
+                }
+            }
+        }.cgImage!
     }
 
     private func drawMomentsPage(_ context: UIGraphicsImageRendererContext) {

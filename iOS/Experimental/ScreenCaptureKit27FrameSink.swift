@@ -138,7 +138,8 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
         }
         if !result.strips.isEmpty {
             let region = pipeline.effectiveConfiguration
-            let maximumHeight = (height - region.topInset - region.bottomInset) * configuration.maximumScreenCount
+            let maximumHeight = configuration.maximumBodyPixelHeight(frameHeight: height,
+                matchingTopInset: region.topInset, matchingBottomInset: region.bottomInset)
             let reachedLimit = try repository.commit(result, maximumBodyHeight: maximumHeight, to: &manifest)
             pipeline.confirmCommit()
             if reachedLimit {

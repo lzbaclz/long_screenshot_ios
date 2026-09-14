@@ -78,29 +78,43 @@ final class CaptureFramePipeline {
                              confidence: 0, rejection: .insufficientOverlap)
             : updated.ingest(analysis)
         if automaticArming {
-            // Independently inspect multiple overlapping central regions. A
-            // blank center or a large chat bubble need not veto visible text in
-            // another region. Conflicting nonzero offsets are never accepted.
             var hypotheses: [StitchDecision] = []
+            var checkedOffsets: Set<Int> = []
+            var verifiedOffsets: [Int: VerifiedStart] = [:]
+            var accepted: [VerifiedStart] = []
             for probe in probes {
-                var copy = probe; hypotheses.append(copy.ingest(analysis))
-                if hypotheses.count == 2,
-                   hypotheses.allSatisfy({ $0.status == .advanced }),
-                   Set(hypotheses.map(\.contentOffset)).count == 1 {
-                    // Two independent regions agree. The narrower third region
-                    // is a rescue probe for sparse/cluttered scenes, not a
-                    // mandatory extra search on every normal starting scroll.
-                    break
+                var copy = probe
+                let hypothesis = copy.ingest(analysis)
+                hypotheses.append(hypothesis)
+                guard hypothesis.status == .advanced else { continue }
+                if checkedOffsets.insert(hypothesis.contentOffset).inserted {
+                    if checkedOffsets.count == 1 { diagnostics.regionAttempts += 1 }
+                    if let verified = verifyStart(analysis, displacement: hypothesis.contentOffset) {
+                        verifiedOffsets[hypothesis.contentOffset] = verified
+                    }
                 }
+                if let verified = verifiedOffsets[hypothesis.contentOffset] { accepted.append(verified) }
+                // A keyboard can produce a plausible but wrong probe offset.
+                // Only offsets independently replayed in a moving region may
+                // vote or conflict; raw probe guesses never authorize a join.
+                let offsets = Set(accepted.map { $0.decision.contentOffset })
+                if offsets.count > 1 { return reject(arming: true, region: true) }
+                if accepted.count >= 2 { break }
             }
-            let moving = hypotheses.filter { $0.status == .advanced }
-            let offsets = Set(moving.map(\.contentOffset))
-            if offsets.count == 1, let match = moving.first { decision = match }
-            else if offsets.count > 1 { return reject(arming: true, region: true) }
-            else if hypotheses.contains(where: { $0.status == .unchanged }) {
+            if let verified = accepted.first {
+                updated = verified.stitcher; decision = verified.decision
+                effectiveConfiguration = verified.configuration
+            } else if !hypotheses.isEmpty, hypotheses.allSatisfy({ $0.status == .unchanged }) {
                 armingRejections = 0
                 return .init(status: .unchanged, strips: [], isArming: true)
+            } else if !checkedOffsets.isEmpty {
+                // Preserve the original frame while there is a motion
+                // hypothesis whose region is still uncertain.
+                return reject(arming: true, region: true)
             }
+            // One stationary local patch does not make the whole frame still.
+            // Mixed unchanged/rejected windows take the existing bounded
+            // scene-replacement path, with its visible starting-point warning.
         }
         if decision.status == .rejected {
             if !hasStarted {
@@ -119,27 +133,6 @@ final class CaptureFramePipeline {
             if hasStarted { stitcher = updated }
             recoveredIfNeeded()
             return .init(status: .unchanged, strips: [], isArming: !hasStarted)
-        }
-        if !hasStarted && automaticallyFindRegion && decision.status == .advanced {
-            diagnostics.regionAttempts += 1
-            guard let candidateAnalysis else { return reject(arming: true, region: true) }
-            let candidates = FixedRegionDetector.candidates(reference: candidateAnalysis, current: analysis,
-                                                            displacement: decision.contentOffset)
-            var verified: (StreamStitcher, StitchDecision, AlignmentConfiguration)?
-            for insets in candidates {
-                var region = configuration
-                region.topInset = insets.top; region.bottomInset = insets.bottom
-                var replay = StreamStitcher(configuration: region)
-                guard replay.ingest(candidateAnalysis).status == .started else { continue }
-                let result = replay.ingest(analysis)
-                if result.status == .advanced, result.contentOffset == decision.contentOffset {
-                    verified = (replay, result, region); break
-                }
-            }
-            // Keep the original provisional frame and retry subsequent frames;
-            // uncertain region evidence is not an instruction to stop ReplayKit.
-            guard let verified else { return reject(arming: true, region: true) }
-            updated = verified.0; decision = verified.1; effectiveConfiguration = verified.2
         }
         guard let rows = decision.sourceRows, !rows.isEmpty else {
             stitcher = updated; recoveredIfNeeded()
@@ -196,14 +189,45 @@ final class CaptureFramePipeline {
         if candidateRepository == nil, let oldURL { try? FileManager.default.removeItem(at: oldURL) }
         candidateAnalysis = analysis; armingRejections = 0
         stitcher = StreamStitcher(configuration: configuration); _ = stitcher.ingest(analysis)
-        probes = [5, 8, 3].map { divisor in
-            var region = configuration; region.topInset = analysis.height / divisor
-            region.bottomInset = analysis.height / divisor
+        let windows = [
+            (analysis.height / 5, analysis.height / 5),
+            (analysis.height / 8, analysis.height / 8),
+            // Chat keyboards occupy the lower third to half of a screen.
+            // Search the upper body as well as symmetric central windows.
+            (analysis.height / 10, analysis.height * 2 / 5),
+            (analysis.height / 10, analysis.height / 2),
+            (analysis.height / 3, analysis.height / 3)
+        ]
+        probes = windows.map { top, bottom in
+            var region = configuration; region.topInset = top; region.bottomInset = bottom
             var probe = StreamStitcher(configuration: region); _ = probe.ingest(analysis); return probe
         }
         diagnostics.lastStage = "arming"
         if replaced { diagnostics.provisionalReplacements += 1 }
         return .init(status: .started, strips: [], isArming: true, replacedProvisionalStart: replaced)
+    }
+
+    private struct VerifiedStart {
+        let stitcher: StreamStitcher
+        let decision: StitchDecision
+        let configuration: AlignmentConfiguration
+    }
+
+    private func verifyStart(_ analysis: GrayFrame, displacement: Int) -> VerifiedStart? {
+        guard let candidateAnalysis else { return nil }
+        let candidates = FixedRegionDetector.candidates(reference: candidateAnalysis, current: analysis,
+                                                        displacement: displacement)
+        for insets in candidates {
+            var region = configuration
+            region.topInset = insets.top; region.bottomInset = insets.bottom
+            var replay = StreamStitcher(configuration: region)
+            guard replay.ingest(candidateAnalysis).status == .started else { continue }
+            let result = replay.ingest(analysis)
+            if result.status == .advanced, result.contentOffset == displacement {
+                return VerifiedStart(stitcher: replay, decision: result, configuration: region)
+            }
+        }
+        return nil
     }
 
     private func loadCandidate() -> CGImage? {

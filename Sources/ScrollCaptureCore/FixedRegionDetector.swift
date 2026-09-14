@@ -41,7 +41,7 @@ public enum FixedRegionDetector {
                                   displacement: Int) -> [Insets] {
         guard reference.width == current.width, reference.height == current.height,
               reference.height >= 40, displacement != 0,
-              displacement > -(reference.height / 2), displacement < reference.height / 2 else { return [] }
+              displacement > -(reference.height - 12), displacement < reference.height - 12 else { return [] }
         if displacement < 0 {
             return candidates(reference: current, current: reference, displacement: -displacement)
         }
@@ -71,14 +71,58 @@ public enum FixedRegionDetector {
                   moving.filter({ $0 <= first + supportWindow }).count >= 3 else { return nil }
             return first
         }
-        guard let top = evidence(fromTop: true), let bottom = evidence(fromTop: false),
-              top + bottom < reference.height - 12 else { return [] }
-        // Offer conservative alternatives to the replay verifier. The first
-        // preserves the largest matching body; the second excludes uncertain
-        // leading/trailing blank runs while visible outer edges remain intact.
-        let raw = [Insets(top: top, bottom: bottom),
+        var raw: [Insets] = []
+        if let top = evidence(fromTop: true), let bottom = evidence(fromTop: false),
+           top + bottom < reference.height - 12 {
+            raw = [Insets(top: top, bottom: bottom),
                    Insets(top: max(0, top - 2), bottom: max(0, bottom - 2))]
+        }
+        // A loading photo or a keyboard can hide all motion at an outer edge.
+        // A distributed, textured interior still supplies a valid matching
+        // region. Its full original outer pixels MUST remain visible as caps.
+        if let interior = movingInterior(reference: reference, current: current, displacement: displacement) {
+            raw.append(interior)
+        }
         return raw.reduce(into: []) { result, item in if !result.contains(item) { result.append(item) } }
+    }
+
+    private static func movingInterior(reference: GrayFrame, current: GrayFrame,
+                                       displacement: Int) -> Insets? {
+        var rows: [Int] = []
+        for y in 0..<(reference.height - displacement) {
+            guard let referenceSpan = AlignmentDetailSupport.horizontalSpan(in: reference, row: y + displacement),
+                  let currentSpan = AlignmentDetailSupport.horizontalSpan(in: current, row: y) else { continue }
+            let shifted = (y + displacement) * reference.width
+            let stationary = y * reference.width
+            var count = 0, motionError = 0, staticError = 0
+            let lower = min(referenceSpan.lowerBound, currentSpan.lowerBound)
+            let upper = max(referenceSpan.upperBound, currentSpan.upperBound)
+            // Short messages may occupy only a dozen analysis columns. Scan
+            // their actual feature support instead of a screen-wide grid that
+            // can miss the glyphs. The shared support check still rejects a
+            // single thin line, and replay must confirm the same displacement.
+            for x in lower..<upper {
+                let a = Int(reference.pixels[shifted + x]), b = Int(current.pixels[stationary + x])
+                let aDetail = max(abs(a - Int(reference.pixels[shifted + x - 1])),
+                                  abs(a - Int(reference.pixels[shifted + x + 1])))
+                let bDetail = max(abs(b - Int(current.pixels[stationary + x - 1])),
+                                  abs(b - Int(current.pixels[stationary + x + 1])))
+                // Both aligned rows must contain real horizontal features;
+                // matching white pixels alone cannot identify a moving region.
+                if min(aDetail, bDetail) >= 16 {
+                    count += 1; motionError += abs(a - b)
+                    staticError += abs(Int(reference.pixels[stationary + x]) - b)
+                }
+            }
+            guard count >= 3 else { continue }
+            let motion = Double(motionError) / Double(count)
+            let fixed = Double(staticError) / Double(count)
+            if motion <= 4, fixed - motion >= 4 { rows.append(y) }
+        }
+        guard rows.count >= 4, let first = rows.first, let last = rows.last else { return nil }
+        let end = last + displacement + 1
+        guard end - first >= 12, last - first >= max(12, (end - first) / 4) else { return nil }
+        return Insets(top: first, bottom: reference.height - end)
     }
 
     private static func boundary(reference: GrayFrame, current: GrayFrame,

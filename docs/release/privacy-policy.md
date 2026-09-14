@@ -1,6 +1,6 @@
 # 续页 / Longlet 隐私政策
 
-生效日期：2026年9月14日。适用：续页 / Longlet 0.1.0–0.1.1。服务提供者：Ziqing Li（子卿 李），与当前 App Store Connect 开发者账号一致。支持邮箱：**chestnutlee23@163.com**。
+生效日期：2026年9月14日。适用：续页 / Longlet 0.1.0–0.1.2。服务提供者：Ziqing Li（子卿 李），与当前 App Store Connect 开发者账号一致。支持邮箱：**chestnutlee23@163.com**。
 
 ## 中文
 

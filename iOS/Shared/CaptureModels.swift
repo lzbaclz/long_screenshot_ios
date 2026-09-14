@@ -17,6 +17,20 @@ public struct CaptureConfiguration: Codable, Equatable, Sendable {
         self.captureBottomInsetFraction = captureBottomInsetFraction
     }
 
+    /// Automatic matching may use only a small moving interior. Its size is
+    /// not the user's screen size; the capture limit still counts full viewports.
+    /// Manual ignored regions keep their explicitly cropped-screen meaning.
+    public func maximumBodyPixelHeight(frameHeight: Int, matchingTopInset: Int,
+                                       matchingBottomInset: Int) -> Int {
+        guard (1...4_096).contains(frameHeight), (2...20).contains(maximumScreenCount),
+              matchingTopInset >= 0, matchingBottomInset >= 0,
+              matchingTopInset < frameHeight, matchingBottomInset < frameHeight - matchingTopInset else { return 0 }
+        let automatic = captureTopInsetFraction == 0 && captureBottomInsetFraction == 0
+        let edgeHeight = matchingTopInset + matchingBottomInset
+        if automatic { return frameHeight * maximumScreenCount - edgeHeight }
+        return (frameHeight - edgeHeight) * maximumScreenCount
+    }
+
     public func validated() throws -> Self {
         guard maximumDurationSeconds.isFinite, (5...120).contains(maximumDurationSeconds),
               (2...20).contains(maximumScreenCount),
