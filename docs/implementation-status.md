@@ -4,7 +4,7 @@
 
 ## 当前交付
 
-0.1.2（3）已完成聊天直接向上起步专项修复并通过本地验收，正在准备手动分发。用户反馈 0.1.1 的向下浏览正常，聊天从最新消息往前翻仍只保留首屏；本轮复现了自动区域与窄中文气泡两类限制，详见 [0.1.2 更新记录](release/0.1.2-testflight.md)。
+**0.1.2（3）已开放内部 TestFlight，原组状态已确认“正在测试”。** 用户反馈 0.1.1 的向下浏览正常，聊天从最新消息往前翻仍只保留首屏；本轮复现并修复自动区域与窄中文气泡两类限制，核心 57 项、原生与像素 54 项、217 组合成基准及保存／分享回归均通过。详见 [0.1.2 更新记录](release/0.1.2-testflight.md)。真实微信效果仍需用户更新后复测。
 
 **0.1.1（2）已开放内部 TestFlight，状态确认“正在测试”。** 双向扩展、每周 50 次测试额度和采集可靠性修复已完成并通过本地验收；中英文测试说明已保存，原内部组 1 位测试员可更新。详见 [本次更新记录](release/0.1.1-testflight.md)。用户已安装首版并反馈微信朋友圈滚动中途主动结束；本轮修复针对已复现路径，真机仍需更新后复测。
 
@@ -22,9 +22,9 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 
 | 类别 | 实际结果 | 范围与证据 |
 | --- | --- | --- |
-| Swift 核心回归 | 40 / 40 通过 | 双向、稀疏文字和固定区域；`.work/beta2-validation/core-final.log`，见 [算法说明](algorithm.md) |
-| 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/core-v2-benchmark/report.json`，不计入真机 G1 或真实成功率 |
-| 本地原生单元与像素验收 | 42 / 42 通过，0 跳过 | iOS Simulator 26.3.1；`.work/beta2-validation/unit-fourth.xcresult`，包含 5 项主 agent 独立最终图片核对 |
+| Swift 核心回归 | 57 / 57 通过 | 双向、窄中文、对称性、固定区域、安全拒绝及缓存；实际执行记录见 [0.1.2 更新](release/0.1.2-testflight.md) |
+| 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/short-message-benchmark/report.json`，不计入真机 G1 或真实成功率 |
+| 本地原生单元与像素验收 | 54 / 54 通过，0 跳过 | iOS Simulator 26.3.1；`.work/beta3-validation/unit-final.xcresult`，含原生短中文、键盘、图片留白及实际 PNG 核对 |
 | Photos 系统拒绝补充 | 1 / 1 通过 | `.work/permission-test-results/20260914-094057/tests.xcresult`，实际系统拒绝、只读 TCC 核对且额度不变；不是物理 iPhone 权限验收 |
 | 界面流程 | 7 条场景已覆盖并通过 | 初轮 6 / 7；标识覆盖修复后相关 2 项复测通过，按钮对比度调整后对应 1 项复测通过。证据见 [本次更新记录](release/0.1.1-testflight.md) |
 | 首版 IPA 静态审计 | 列出的检查全部通过 | [0.1.0 IPA 审计](validation/automated/ipa-audit.md)；0.1.1 分发物另行记录 |

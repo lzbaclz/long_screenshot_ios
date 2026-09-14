@@ -13,7 +13,7 @@ iPhone 实时滚动长截图应用。用户主动开始系统屏幕捕捉，手�
 
 模拟器演示使用明确标注的合成图片，不代表已完成跨应用录屏。真实设备、用户访谈、内测与发布状态见 [实施记录](docs/implementation-status.md)。
 
-2026-09-14：**0.1.1（2）已开放 TestFlight 内部测试**，增加双向扩展、每周 50 次额度和采集恢复改进。测试组构建状态为“正在测试”，现有测试员可直接更新；本次没有公开加入链接。模拟器验证、构建标识与真机待测事项见 [本次发布记录](docs/release/0.1.1-testflight.md)。
+2026-09-14：**0.1.2（3）已开放 TestFlight 内部测试**，修复窄中文气泡、输入栏／键盘和大留白导致的聊天向上起步失败。每周 50 次测试额度继续生效。测试组状态为“正在测试”，现有测试员可直接更新；本次没有公开加入链接。验收与真机待测事项见 [本次发布记录](docs/release/0.1.2-testflight.md)。
 
 ## 开发
 
@@ -63,6 +63,7 @@ SIMULATOR_UDID=<专用模拟器ID> ./scripts/test-ios.sh -parallel-testing-enabl
 - [实施状态与证据](docs/implementation-status.md)
 - [0.1.0（1）TestFlight 发布记录](docs/release/0.1.0-testflight.md)
 - [0.1.1（2）修复与验收记录](docs/release/0.1.1-testflight.md)
+- [0.1.2（3）聊天向上起步修复](docs/release/0.1.2-testflight.md)
 - [算法说明](docs/algorithm.md)
 - [品牌命名](docs/brand-naming.md)
 - [图标原图与提示词](docs/design/longlet-icon-prompt.md)
