@@ -1,6 +1,8 @@
 # 续页 / Longlet 商店与测试分发资料
 
-状态：可编辑草案，未创建商店记录、上传构建或发送邀请。发布主体使用项目负责人已有的付费 Apple Developer 团队；本文不保存团队凭据。支持邮箱：**chestnutlee23@163.com**。目标为全球发行，实际地区以最终可用性及资料完成情况为准。
+状态更新（2026-09-14）：App Store Connect 已创建 Longlet（App ID `6811703874`），0.1.0（1）已上传并处理完成，分配至 `Longlet Internal`，已邀请用户本人；构建状态已核对为“正在测试”。实际接受与安装尚未确认，正式 App Store 上架未进行。详见 [本次 TestFlight 记录](0.1.0-testflight.md)。下文正式商店文案仍为可编辑草案。
+
+发布主体使用项目负责人已有的付费 Apple Developer 团队；本文不保存团队凭据或私人测试者邮箱。支持邮箱：**chestnutlee23@163.com**。目标为全球发行，实际地区以最终可用性及资料完成情况为准。
 
 ## 商店字段
 
@@ -13,7 +15,7 @@
 | 关键词草案 | 滚动截图,长图,拼接,截屏,聊天记录,网页,图片编辑,隐私遮挡 | scrolling,capture,stitch,chat,webpage,redact,crop,vertical,screen |
 | 支持邮箱 | chestnutlee23@163.com | chestnutlee23@163.com |
 | 支持 URL | 待部署的公开 HTTPS 支持页面，不能填邮箱或本地路径 | Public HTTPS support page: pending |
-| 隐私政策 URL | 见本目录政策草案，公开 URL 待部署 | Public policy URL: pending |
+| 隐私政策 URL | [已保存的公开政策](https://github.com/lzbaclz/long_screenshot_ios/blob/feat/scroll-capture-mvp/docs/release/privacy-policy.md) | Same public policy URL saved for TestFlight |
 | 版权 | 待填写实际权利人及年份 | Actual rights holder and year: pending |
 
 名称与副标题均按 30 字符上限编写，最终由 App Store Connect 校验；名称研究不等于名称已保留或商标已核准。规则依据：[App information](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information)。
@@ -104,4 +106,4 @@ Support: chestnutlee23@163.com
 
 需要同一候选构建的真实中文及英文屏幕：起始引导、真实捕捉结果、清晰放大查看、裁剪与遮挡、导出选择。示例内容必须标明演示，不能伪装成微信等真实跨应用捕捉。原始图标位于 `docs/design/`；正式 1024 图标及本地化资源由工程集成记录确认。
 
-未完成项：公开政策/支持 URL、销售商与版权信息、最终价格和非消耗型商品配置、年龄分级问卷、审核测试内容 URL、各尺寸截图、全球地区配置及地区资料。所有字段必须由实际账户与候选版本填入，不使用占位内容提交。
+公开隐私 URL 与中英文测试说明已用于本次内部 Beta。正式商店尚未完成的资料包括：公开支持网页、销售商与版权信息的最终核对、价格和非消耗型商品配置、年龄分级问卷、审核测试内容 URL、各尺寸截图、全球地区配置及地区资料。所有正式字段必须由实际账户与候选版本填入，不使用占位内容提交。

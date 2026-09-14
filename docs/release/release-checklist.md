@@ -2,6 +2,12 @@
 
 本文件是待执行检查单，不是发布通过声明。证据总入口为 [实施状态](../implementation-status.md)，门槛口径为 [G1/G2/G3 证据表](../validation/gates-and-evidence.md)。所有勾选附具体构建、执行日期与证据位置；文件存在或代码可编译不等于真机通过。
 
+## 2026-09-14 内部 Beta 状态
+
+用户已明确调整顺序，要求先模拟器调试、再通过 TestFlight 自行真机测试；本次分发不再由尚未完成的 G1 阻塞。Longlet 0.1.0（1）已上传处理完成，内部组 `Longlet Internal` 已分配 1 个构建并邀请用户本人，最终状态“正在测试 / 90 天后过期”；实际接受与安装尚未确认。[本次记录](0.1.0-testflight.md) 包含 IPA 指纹及本地 23 / 23、合成 120 / 120、iOS 模拟器 24 / 24、Photos 拒绝补充 1 / 1 的证据。
+
+这次有限内部测试分发不等于下列正式发布条件已全部满足。G1/G2/G3、用户研究、正式商店资料和真实设备资源测试继续待完成。[最终 CI](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34792767736) 的 core、ios27-compile、ios 三项均已成功，下载的 xcresult 确认云端 iOS 模拟器 24 / 24 通过、0 失败、0 跳过。
+
 ## 一、代码与可复现构建
 
 - [ ] 冻结候选 Git 提交、版本、构建号；记录 Xcode/SDK 与依赖解析版本。
@@ -45,7 +51,7 @@
 - [ ] 对中国大陆及其他存在额外要求的地区逐项核对资料；依 App Store Connect 提示处理适用的 ICP 等信息，不以“本地处理”直接判断免除。[Apple 应用资料说明](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information)
 - [ ] 年龄分级、内容权利、加密/出口合规问卷按当前应用实际能力填写，没有凭空填证书或备案号。
 
-Apple 要求 iOS 应用提供公开隐私政策并准确更新数据处理说明；准备好 Markdown 不代表已完成商店申报。[App Store Connect 隐私管理](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy)
+本次内部 Beta 已保存[公开隐私政策 URL](https://github.com/lzbaclz/long_screenshot_ios/blob/feat/scroll-capture-mvp/docs/release/privacy-policy.md)。这项配置不代表正式 App Privacy、主体、地区和所有商店资料均已完成。Apple 要求 iOS 应用提供公开隐私政策并准确更新数据处理说明。[App Store Connect 隐私管理](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy)
 
 ## 五、发布决定与上线后记录
 
@@ -57,7 +63,7 @@ Apple 要求 iOS 应用提供公开隐私政策并准确更新数据处理说明
 | 实际可用地区与排除原因 | — |
 | 发布时间方式与回退构建 | — |
 | 审核人 / 发布负责人 / 决定日期 | — |
-| 结论：继续验证 / 限定范围 / 准予提交 | **未决定** |
+| 结论：继续验证 / 限定范围 / 准予提交 | **已按用户授权完成 0.1.0（1）内部 TestFlight 分发；正式商店提交仍待决定** |
 
 上线后按计划记录有效使用、14 日复用、购买、退款与支持工时。当前代码没有自动上传这些使用事件；可使用自愿反馈及 Apple 实际提供的报表，说明各数据来源与覆盖范围。若以后增加分析 SDK，必须作为新变更单独设计告知、选择、申报与验证。
 
@@ -65,4 +71,4 @@ Apple 要求 iOS 应用提供公开隐私政策并准确更新数据处理说明
 
 本文依据 `iOS/BroadcastExtension/SampleHandler.swift`、`iOS/Shared/`、`PurchaseStore.swift`、`PlatformViews.swift` 和 `Config/PrivacyInfo.xcprivacy`。最终提交时重新检查依赖与网络行为，不能仅凭当前隐私清单的空收集列表判定申报正确。
 
-App Store 隐私标签的候选答案是“不收集数据”：当前截图与额度在设备上处理，没有开发者后台。仍须逐项评估最终应用、第三方组件和实际反馈流程。Apple 对设备外收集的定义见 [App privacy details](https://developer.apple.com/app-store/app-privacy-details/)；所有应用都需要公开隐私政策 URL，见 [App Store Connect 隐私资料](https://developer.apple.com/help/app-store-connect/reference/app-privacy/)。本 Markdown 尚不能代替公开 URL。
+App Store 隐私标签的候选答案是“不收集数据”：当前截图与额度在设备上处理，没有开发者后台。仍须逐项评估最终应用、第三方组件和实际反馈流程。Apple 对设备外收集的定义见 [App privacy details](https://developer.apple.com/app-store/app-privacy-details/)；所有应用都需要公开隐私政策 URL，见 [App Store Connect 隐私资料](https://developer.apple.com/help/app-store-connect/reference/app-privacy/)。本次已配置公开 URL，正式隐私申报仍需按最终候选核对。

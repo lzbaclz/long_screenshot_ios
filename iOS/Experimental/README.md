@@ -1,6 +1,6 @@
 # iOS 27 ScreenCaptureKit 实验后端
 
-状态：已按 Apple 官方 iOS 27 示例及符号文档实现。设备 SDK 27 CI 已进入实验适配器编译；五个配置属性的可用性问题已从后续诊断中消失，随后发现两处跨 actor 传递可变流对象的错误。本地已改为传递流身份和布尔值，**最新修复尚待新一轮 SDK 27 编译，也未通过真机验收**。本机只有 SDK 26.2。不要把关闭编译开关后的成功构建写成此后端编译成功。
+状态：**提交 `6e983055e4fd6eb41067e29d5837de31c3708cc7` 已在真实 Xcode 27 / iPhoneOS 27 SDK 中完成实验开关开启的编译与链接，CI job 成功。** 尚未通过签名安装和真机捕捉验收。本机仍只有 SDK 26.2；新 SDK 通过证据来自下方第四次 GitHub CI 日志，不来自关闭开关的本机构建。
 
 两个 Swift 文件的全部内容由 `#if CAPTUREKIT_IOS27 && os(iOS)` 包围，类型标记为 `@available(iOS 27.0, *)`。默认 UI 与 ReplayKit 扩展没有替换。本目录不修改工程签名、Info.plist、生产默认值或购买功能。
 
@@ -29,7 +29,7 @@
 5. 现有照片添加权限说明仍由保存流程使用。此后端不需要相机或麦克风用途说明；不得为了让示例功能全部运行而额外请求这些权限。
 6. `ScreenCaptureKit` 应仅在支持的运行时调用，保持运行时 `#available` 检查。实验变体需弱链接新框架，并检查最终 Mach-O 的载入命令，避免在没有此框架的 iOS 18 上启动失败。不要把不存在于 SDK 26.2 的框架无条件添加至基线；关闭开关的基线构建仍必须通过。
 
-目前没有向现有 target 自动添加这些配置，也没有将实验按钮展示给用户。工程与 CI 维护者取得新 SDK 后需先单独构建，再决定是否接入测试入口。
+工程现已提供独立 `SDK27` 编译配置并启用实验开关，仅在该配置的宿主中设置 ScreenCaptureKit 弱链接；默认 Debug/Release 没有启用此后端，也没有向用户展示实验按钮。后台模式、用途说明、签名 entitlement 与测试入口仍需按上述清单独立配置并进行真机验证。
 
 ## 宿主接口
 
@@ -63,7 +63,7 @@ if #available(iOS 27.0, *) {
 | --- | --- | --- |
 | SDK 26.2，开关关闭，共享代码与 ReplayKit 完整代码生成 | 2026-09-14 本机通过 | `swiftc -emit-object -whole-module-optimization -swift-version 6 -strict-concurrency=complete -application-extension`，包含本目录且未设置开关 |
 | 仅语法解析，开关开启 | 2026-09-14 本机通过；不是类型检查 | `swiftc -frontend -parse -D CAPTUREKIT_IOS27 ... iOS/Experimental/*.swift` |
-| Xcode / SDK 27，开关开启真实编译 | **五处可用性错误已消失；两处跨 actor 传递错误本地已修复，等待重跑** | 下方第三次 CI 记录 |
+| Xcode / SDK 27，开关开启真实编译 | **2026-09-14 通过；commit `6e98305`** | 下方第四次 CI 记录，包含两份实验源的实际编译和链接 |
 | iOS 27 真机选择器、授权、整屏与后台 | **未执行** | — |
 | 与 ReplayKit 相同内容的像素/丢帧/内存比较 | **未执行** | — |
 | 停止期间启动、取消后的旧回调、来源更改 | **未执行** | — |
@@ -116,3 +116,32 @@ CI 必须同时记录 `xcodebuild -version`、所选 SDK、开关值及退出码
 这些回调仅需要区分流身份或初次选择，因此本地修复不增加流对象的 `@unchecked Sendable` 声明：在回调队列上取 `ObjectIdentifier` / `Bool`，只把这些 Sendable 值送入 MainActor，再与协调器持有的流核对。系统停止回调也使用相同身份传递方式，实际流操作继续留在 MainActor。
 
 本地开关开启的语法解析和格式检查通过；新 SDK 完整编译结果仍等待后续 CI。没有重新推送、取消正常 iOS 测试任务或修改已上传的 Beta。原始日志位于 `.work/ios27-ci-audit/job-103816844183.log`。
+
+## 2026-09-14 第四次新 SDK CI：完整编译通过
+
+[run 34792456674 / ios27-compile job 103819110959](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34792456674/job/103819110959) 的最终状态为 `success`。这项结论仅属于该可选编译 job，不表示同一 workflow 中其他 iOS UI 测试已经通过。
+
+| 核验字段 | 日志中的实际值 |
+| --- | --- |
+| 代码提交 | `6e983055e4fd6eb41067e29d5837de31c3708cc7` |
+| Xcode | `27.0`，build `27A5252f`，`Xcode_27_beta_6.app` |
+| SDK | `/Applications/Xcode_27_beta_6.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk` |
+| 配置与目标 | `SDK27`，`generic/platform=iOS`，`arm64-apple-ios18.0` |
+| 实验开关 | 实际 Swift 编译命令含 `-DCAPTUREKIT_IOS27` |
+| 适配器源码 | 两份 `ScreenCaptureKit27Coordinator.swift` 与 `ScreenCaptureKit27FrameSink.swift` 均出现实际 `SwiftCompile normal arm64` 记录 |
+| 框架链接 | 宿主链接命令含 `-weak_framework ScreenCaptureKit` |
+| 签名 | `CODE_SIGNING_ALLOWED=NO`，所以本 job 不证明 entitlement 或安装有效 |
+| 编译结果 | `2026-09-14T00:22:28Z` 输出 `BUILD SUCCEEDED`，compile step 与整个 job 均为 `success` |
+| 编译诊断 | 没有 `error:`；仅有未使用 AppIntents 功能导致的元数据提取跳过提示 |
+
+实际执行命令：
+
+```sh
+xcodebuild -project ScrollCapture.xcodeproj -scheme ScrollCapture \
+  -configuration SDK27 -destination 'generic/platform=iOS' \
+  -derivedDataPath .work/iOS27 CODE_SIGNING_ALLOWED=NO build
+```
+
+完整 job 日志保存在 `.work/ios27-ci-audit/job-103819110959.log`，SHA-256 为 `26f43596fe153f5a8479758bc92a299644df49a8c8e0cd6e196a5f3295fa42aa`。本地核验同时检查了设备 SDK、构建目标、实验开关、两份源文件编译记录、宿主弱链接和最终成功标记。
+
+接下来仍需验证真实签名能力、系统选择器与授权、后台持续采集、真实画面接缝、停止/恢复以及资源占用。本次不增加这些真机结果，也没有更改已经进入 TestFlight 内部测试的默认 ReplayKit `0.1.0 (1)`。
