@@ -98,6 +98,7 @@ final class CaptureFramePipeline {
             }
         }
         var verifiedForegroundStart = false
+        var selectedStart: VerifiedStart?
         if automaticArming, let reference = candidateAnalysis {
             let foreground = measure(.foregroundRegistration) {
                 ForegroundMotionRegistration.analyze(reference: reference, current: analysis, configuration: configuration)
@@ -115,6 +116,7 @@ final class CaptureFramePipeline {
                 }
                 updated = verified.stitcher; decision = verified.decision
                 effectiveConfiguration = verified.configuration
+                selectedStart = verified
                 verifiedForegroundStart = true
             case .rejected:
                 // Failed moving foreground is not a new anchor. A settled,
@@ -161,6 +163,7 @@ final class CaptureFramePipeline {
             if let verified = accepted.first {
                 updated = verified.stitcher; decision = verified.decision
                 effectiveConfiguration = verified.configuration
+                selectedStart = verified
             } else if !hypotheses.isEmpty, hypotheses.allSatisfy({ $0.status == .unchanged }) {
                 armingRejections = 0; rejectedSceneAnalysis = nil
                 return .init(status: .unchanged, strips: [], isArming: true)
@@ -207,6 +210,16 @@ final class CaptureFramePipeline {
         strips.append(.init(image: added, sourceTopPixel: rows.lowerBound, placement: decision.placement,
                             fullImage: automaticallyFindRegion ? image : nil,
                             topInset: region.topInset, bottomInset: region.bottomInset))
+        if !hasStarted {
+            // Record only the region whose replay won and whose strips were
+            // rendered. Failed/conflicting candidates must leave no values.
+            diagnostics.matchingTopInset = region.topInset
+            diagnostics.matchingBottomInset = region.bottomInset
+            diagnostics.matchingFrameHeight = analysis.height
+            diagnostics.matchingRegionSource = selectedStart?.source ?? "manual"
+            diagnostics.fixedBandTop = selectedStart?.fixedBand?.top
+            diagnostics.fixedBandBottom = selectedStart?.fixedBand?.bottom
+        }
         hasStarted = true; candidateAnalysis = nil; probes.removeAll()
         stitcher = updated; diagnostics.acceptedFrames += 1; diagnostics.lastStage = "stitching"
         recoveredIfNeeded()
@@ -281,21 +294,40 @@ final class CaptureFramePipeline {
         let stitcher: StreamStitcher
         let decision: StitchDecision
         let configuration: AlignmentConfiguration
+        let source: String
+        let fixedBand: (top: Int, bottom: Int)?
     }
 
     private func verifyStart(_ analysis: GrayFrame, displacement: Int,
                              preferredInsets: FixedRegionDetector.Insets? = nil) -> VerifiedStart? {
         guard let candidateAnalysis else { return nil }
-        let candidates = preferredInsets.map { [$0] }
-            ?? FixedRegionDetector.candidates(reference: candidateAnalysis, current: analysis, displacement: displacement)
+        let candidates: [FixedRegionDetector.Insets]
+        let source: String
+        let band: (top: Int, bottom: Int)?
+        if let preferredInsets {
+            candidates = [preferredInsets]; source = "foreground"; band = nil
+        } else {
+            // candidates can discover foreground AFTER swapping an upward
+            // pair. A missing preferred region alone does not imply whole-page
+            // translation; preserve the detector's explicit candidate source.
+            let result = FixedRegionDetector.candidateSet(reference: candidateAnalysis,
+                current: analysis, displacement: displacement)
+            candidates = result.insets
+            source = result.source == .foreground ? "foreground" : "wholePage"
+            band = result.source == .wholePage
+                ? FixedRegionDetector.fixedStructureBand(reference: candidateAnalysis, current: analysis) : nil
+        }
         for insets in candidates {
+            // This second gate precedes replay: its trimmed score may otherwise
+            // hide a narrow fixed header inside a mostly correct moving region.
+            if let band, insets.top < band.top || insets.bottom < band.bottom { continue }
             var region = configuration
             region.topInset = insets.top; region.bottomInset = insets.bottom
             var replay = StreamStitcher(configuration: region)
             guard replay.ingest(candidateAnalysis).status == .started else { continue }
             let result = replay.ingest(analysis)
             if result.status == .advanced, result.contentOffset == displacement {
-                return VerifiedStart(stitcher: replay, decision: result, configuration: region)
+                return VerifiedStart(stitcher: replay, decision: result, configuration: region, source: source, fixedBand: band)
             }
         }
         return nil

@@ -47,6 +47,7 @@
 		8CFEAB378B7BE40F85CF3A93 /* WallpaperAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F5EAFB64C0FA5B5921FFD8A /* WallpaperAcceptanceTests.swift */; };
 		900D2A31556771A30099EEC4 /* WallpaperSimulatorCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29945EC5955137DC207E8DE6 /* WallpaperSimulatorCaptureTests.swift */; };
 		924328FD0D36126CCDCFE756 /* ScrollCaptureCore in Frameworks */ = {isa = PBXBuildFile; productRef = F0C2EE3C28C0494C5883D48F /* ScrollCaptureCore */; };
+		98FAD98257663A5F2E17FFA4 /* HeaderCaptureAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F6334BB4BD9F0211D2427A /* HeaderCaptureAcceptanceTests.swift */; };
 		9A4EE9C21C70EEAE091F57B9 /* PurchaseQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D96ABD3D30328164F7C0073 /* PurchaseQuotaTests.swift */; };
 		A166874F784F958B763C15F4 /* CaptureFramePipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FC9B61B7555A7CE67903C3 /* CaptureFramePipelineTests.swift */; };
 		A482FF00164D29796D9D33B7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8DBB254E08A073750F127A27 /* InfoPlist.strings */; };
@@ -58,6 +59,7 @@
 		B7B9EBDF213B14CA37A1BC39 /* PurchaseStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204EA6E6D716773996746520 /* PurchaseStore.swift */; };
 		BABDDA9DC6C795B34E23AE5E /* CaptureSessionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EF969C2888D2DF89DF88BA /* CaptureSessionRepository.swift */; };
 		BBA33FAC08339C673D93AFE1 /* CaptureStageTimings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1297EE9389A8047240AE925 /* CaptureStageTimings.swift */; };
+		BC445B455892FBD598E415D4 /* HeaderSimulatorCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250E43FE807F30EB3B74D3A4 /* HeaderSimulatorCaptureTests.swift */; };
 		D2157D5786E368E30D58CEB8 /* UpwardStartRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6E6944E04D908DD8543C7D /* UpwardStartRegressionTests.swift */; };
 		D5E6BFB84916DCEE9D0BF672 /* BroadcastExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4B29DCC5A99D542D9BEB61C7 /* BroadcastExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DE7EE1B8088A278CC02B785D /* CaptureEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33AA79F8946C95E13340766F /* CaptureEditorView.swift */; };
@@ -143,6 +145,7 @@
 		204EA6E6D716773996746520 /* PurchaseStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchaseStore.swift; sourceTree = "<group>"; };
 		237C4A61753F86102AD878B7 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		23A27693329C3A825BE6CB5F /* CaptureStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStorageTests.swift; sourceTree = "<group>"; };
+		250E43FE807F30EB3B74D3A4 /* HeaderSimulatorCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderSimulatorCaptureTests.swift; sourceTree = "<group>"; };
 		298BE23F8BB177C5FA7D95D3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		29945EC5955137DC207E8DE6 /* WallpaperSimulatorCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperSimulatorCaptureTests.swift; sourceTree = "<group>"; };
 		2BD235CB1F7C225E95E2D385 /* Project.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Project.xcconfig; sourceTree = "<group>"; };
@@ -178,6 +181,7 @@
 		BC47B2EF15259AE9D7445668 /* ScrollCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollCaptureUITests.swift; sourceTree = "<group>"; };
 		C55E307475BF5D400686BEED /* CaptureGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureGuideView.swift; sourceTree = "<group>"; };
 		CBD069EBC45B83CBBAEE5D53 /* CaptureMessageLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMessageLocalization.swift; sourceTree = "<group>"; };
+		D0F6334BB4BD9F0211D2427A /* HeaderCaptureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderCaptureAcceptanceTests.swift; sourceTree = "<group>"; };
 		DE57C03C3EA1E9007BF8EF2D /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		DF6E6944E04D908DD8543C7D /* UpwardStartRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpwardStartRegressionTests.swift; sourceTree = "<group>"; };
 		E1297EE9389A8047240AE925 /* CaptureStageTimings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStageTimings.swift; sourceTree = "<group>"; };
@@ -252,6 +256,7 @@
 		1CCE0B3BCF92F34B95EB6DC0 /* SimulatorCaptureUITests */ = {
 			isa = PBXGroup;
 			children = (
+				250E43FE807F30EB3B74D3A4 /* HeaderSimulatorCaptureTests.swift */,
 				29945EC5955137DC207E8DE6 /* WallpaperSimulatorCaptureTests.swift */,
 			);
 			path = SimulatorCaptureUITests;
@@ -265,6 +270,7 @@
 				7C998B2D11BBA4CC40D1105B /* CaptureLifecyclePolicyTests.swift */,
 				23A27693329C3A825BE6CB5F /* CaptureStorageTests.swift */,
 				8BAEC3DB2B819FB3B92A0DFB /* ForegroundPipelineIntegrationTests.swift */,
+				D0F6334BB4BD9F0211D2427A /* HeaderCaptureAcceptanceTests.swift */,
 				6E8BB9FCCD33BC152CE898EB /* ShortChatAcceptanceTests.swift */,
 				DF6E6944E04D908DD8543C7D /* UpwardStartRegressionTests.swift */,
 				0F5EAFB64C0FA5B5921FFD8A /* WallpaperAcceptanceTests.swift */,
@@ -713,6 +719,7 @@
 				612D8A78369B456F77286F0E /* CaptureModels.swift in Sources */,
 				BABDDA9DC6C795B34E23AE5E /* CaptureSessionRepository.swift in Sources */,
 				BBA33FAC08339C673D93AFE1 /* CaptureStageTimings.swift in Sources */,
+				BC445B455892FBD598E415D4 /* HeaderSimulatorCaptureTests.swift in Sources */,
 				900D2A31556771A30099EEC4 /* WallpaperSimulatorCaptureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -734,6 +741,7 @@
 				271221DB1EC05884B4E56260 /* CaptureLifecyclePolicyTests.swift in Sources */,
 				54C382E21F63A0EFEC6E6FED /* CaptureStorageTests.swift in Sources */,
 				FAA5CF9DF2FB6EB9CBFD81DD /* ForegroundPipelineIntegrationTests.swift in Sources */,
+				98FAD98257663A5F2E17FFA4 /* HeaderCaptureAcceptanceTests.swift in Sources */,
 				9A4EE9C21C70EEAE091F57B9 /* PurchaseQuotaTests.swift in Sources */,
 				8795BE3AE2753F9A58D503DB /* ShortChatAcceptanceTests.swift in Sources */,
 				D2157D5786E368E30D58CEB8 /* UpwardStartRegressionTests.swift in Sources */,
@@ -1191,7 +1199,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1212,7 +1220,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.3;
+				MARKETING_VERSION = 0.1.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1319,7 +1327,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1340,7 +1348,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.3;
+				MARKETING_VERSION = 0.1.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1424,7 +1432,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1439,7 +1447,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.3;
+				MARKETING_VERSION = 0.1.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

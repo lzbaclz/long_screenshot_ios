@@ -5,8 +5,10 @@ import UIKit
 struct FixtureReaderApp: App {
     var body: some Scene {
         WindowGroup {
-            if ProcessInfo.processInfo.arguments.contains("--wallpaper-chat") {
+            if ProcessInfo.processInfo.arguments.contains("--wallpaper-chat")
+                || ProcessInfo.processInfo.arguments.contains("--same-color-header-chat") {
                 WallpaperChatHost()
+                    .statusBarHidden(ProcessInfo.processInfo.arguments.contains("--same-color-header-chat"))
                     .ignoresSafeArea()
                     .preferredColorScheme(.light)
             } else {
@@ -101,7 +103,23 @@ private struct WallpaperChatHost: UIViewControllerRepresentable {
 }
 
 private final class WallpaperChatController: UIViewController, UIScrollViewDelegate {
-    private let hideIdentifiers = ProcessInfo.processInfo.arguments.contains("--wallpaper-hide-identifiers")
+    private let sameColorHeader = ProcessInfo.processInfo.arguments.contains("--same-color-header-chat")
+    private var hideIdentifiers: Bool {
+        sameColorHeader || ProcessInfo.processInfo.arguments.contains("--wallpaper-hide-identifiers")
+    }
+    private let recordingIndicatorAfterFirstFrame = ProcessInfo.processInfo.arguments.contains("--recording-indicator-after-first-frame")
+    private var indicatorVisible = ProcessInfo.processInfo.arguments.contains("--recording-indicator-in-first-frame")
+    private let syntheticClock = UILabel()
+    private let syntheticSignal = UIImageView(image: UIImage(systemName: "cellularbars"))
+    private let syntheticWiFi = UIImageView(image: UIImage(systemName: "wifi"))
+    private let syntheticBattery = UIImageView(image: UIImage(systemName: "battery.100"))
+    private let syntheticBack = UIImageView(image: UIImage(systemName: "chevron.left"))
+    private let syntheticIndicator = UIView()
+    private let syntheticRecordingDot = UIView()
+    private let indicatorButton = UIButton(type: .system)
+    // This is a fixture-only status bar. It never controls the system capture
+    // indicator or ReplayKit; the existing wallpaper mode retains system UI.
+    override var prefersStatusBarHidden: Bool { sameColorHeader }
     private let wallpaper = UIImageView()
     private let header = UIView()
     private let footer = UIView()
@@ -126,7 +144,8 @@ private final class WallpaperChatController: UIViewController, UIScrollViewDeleg
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
+        view.backgroundColor = sameColorHeader ? UIColor(white: 237.0 / 255, alpha: 1) : .white
+        wallpaper.isHidden = sameColorHeader
         wallpaper.contentMode = .scaleToFill
         wallpaper.isAccessibilityElement = false
         wallpaper.isUserInteractionEnabled = false
@@ -150,10 +169,11 @@ private final class WallpaperChatController: UIViewController, UIScrollViewDeleg
         view.addSubview(scrollView)
 
         for bar in [header, footer] {
-            bar.backgroundColor = UIColor(red: 0.95, green: 0.96, blue: 0.93, alpha: 1)
+            bar.backgroundColor = sameColorHeader ? UIColor(white: 237.0 / 255, alpha: 1)
+                : UIColor(red: 0.95, green: 0.96, blue: 0.93, alpha: 1)
             view.addSubview(bar)
         }
-        titleLabel.text = "固定壁纸 · 合成聊天测试"
+        titleLabel.text = sameColorHeader ? "合成聊天" : "固定壁纸 · 合成聊天测试"
         titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         titleLabel.textColor = .black
         titleLabel.textAlignment = .center
@@ -162,6 +182,7 @@ private final class WallpaperChatController: UIViewController, UIScrollViewDeleg
         metadataLabel.textColor = .darkGray
         metadataLabel.textAlignment = .center
         metadataLabel.isAccessibilityElement = true
+        metadataLabel.accessibilityTraits = .staticText
         metadataLabel.accessibilityLabel = "合成壁纸聊天布局数据"
         metadataLabel.accessibilityIdentifier = "fixture.wallpaper.metadata"
         header.addSubview(metadataLabel)
@@ -175,21 +196,72 @@ private final class WallpaperChatController: UIViewController, UIScrollViewDeleg
         resetButton.accessibilityIdentifier = "fixture.wallpaper.reset"
         resetButton.addTarget(self, action: #selector(resetToMiddle), for: .touchUpInside)
         footer.addSubview(resetButton)
+        if sameColorHeader { configureSyntheticHeader() }
+    }
+
+    private func configureSyntheticHeader() {
+        if recordingIndicatorAfterFirstFrame { indicatorVisible = false }
+        syntheticClock.text = "09:41"
+        syntheticClock.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        syntheticClock.textColor = .black
+        let statusElements: [UIView] = [syntheticClock, syntheticSignal, syntheticWiFi, syntheticBattery, syntheticBack]
+        for element in statusElements {
+            element.tintColor = .black
+            element.isAccessibilityElement = false
+            header.addSubview(element)
+        }
+        syntheticIndicator.backgroundColor = .black
+        syntheticIndicator.layer.cornerRadius = 16
+        syntheticIndicator.isHidden = !indicatorVisible
+        syntheticIndicator.isAccessibilityElement = false
+        header.addSubview(syntheticIndicator)
+        syntheticRecordingDot.backgroundColor = .systemRed
+        syntheticRecordingDot.layer.cornerRadius = 5
+        syntheticIndicator.addSubview(syntheticRecordingDot)
+        // The test taps this only AFTER obtaining and ingesting the first
+        // screenshot. No timer races the screenshot or first-scroll boundary.
+        indicatorButton.setTitle("录屏指示", for: .normal)
+        indicatorButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        indicatorButton.accessibilityIdentifier = "fixture.header.toggle-indicator"
+        indicatorButton.accessibilityValue = indicatorVisible ? "visible" : "hidden"
+        indicatorButton.addTarget(self, action: #selector(toggleSyntheticIndicator), for: .touchUpInside)
+        footer.addSubview(indicatorButton)
+        footerLabel.text = "纯程序生成"
+    }
+
+    @objc private func toggleSyntheticIndicator() {
+        indicatorVisible.toggle()
+        syntheticIndicator.isHidden = !indicatorVisible
+        indicatorButton.accessibilityValue = indicatorVisible ? "visible" : "hidden"
+        updateMetadata()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        let headerHeight = view.safeAreaInsets.top + 61
+        let headerHeight: CGFloat = sameColorHeader ? 100 : view.safeAreaInsets.top + 61
         let footerHeight = view.safeAreaInsets.bottom + 56
         header.frame = CGRect(x: 0, y: 0, width: width, height: headerHeight)
         footer.frame = CGRect(x: 0, y: view.bounds.height - footerHeight, width: width, height: footerHeight)
-        titleLabel.frame = CGRect(x: 12, y: view.safeAreaInsets.top + 7, width: width - 24, height: 23)
+        titleLabel.frame = CGRect(x: 12, y: sameColorHeader ? 57 : view.safeAreaInsets.top + 7,
+                                  width: width - 24, height: 23)
         metadataLabel.frame = CGRect(x: 8, y: headerHeight - 24, width: width - 16, height: 17)
         footerLabel.frame = CGRect(x: 13, y: 16, width: max(0, width - 120), height: 20)
         resetButton.frame = CGRect(x: width - 101, y: 6, width: 91, height: 43)
+        if sameColorHeader {
+            syntheticClock.frame = CGRect(x: 24, y: 17, width: 59, height: 23)
+            syntheticSignal.frame = CGRect(x: width - 85, y: 21, width: 17, height: 15)
+            syntheticWiFi.frame = CGRect(x: width - 63, y: 21, width: 17, height: 15)
+            syntheticBattery.frame = CGRect(x: width - 41, y: 20, width: 25, height: 17)
+            syntheticBack.frame = CGRect(x: 17, y: 60, width: 12, height: 20)
+            // Extend beyond the simulator's Dynamic Island so the synthetic
+            // change and red dot remain visible beside its system-owned mask.
+            syntheticIndicator.frame = CGRect(x: (width - 200) / 2, y: 12, width: 200, height: 33)
+            syntheticRecordingDot.frame = CGRect(x: 12, y: 11, width: 10, height: 10)
+            indicatorButton.frame = CGRect(x: width / 2 - 46, y: 6, width: 92, height: 43)
+        }
         wallpaper.frame = view.bounds
-        if wallpaperSize != view.bounds.size, width > 0, view.bounds.height > 0 {
+        if !sameColorHeader, wallpaperSize != view.bounds.size, width > 0, view.bounds.height > 0 {
             wallpaperSize = view.bounds.size
             wallpaper.image = SyntheticScenery.image(size: wallpaperSize, seed: 0xCAFE_0137)
         }
@@ -334,7 +406,8 @@ private final class WallpaperChatController: UIViewController, UIScrollViewDeleg
         }
         let payload: [String: Any] = [
             "formatVersion": 1,
-            "source": "synthetic-fixed-wallpaper-chat",
+            "source": sameColorHeader ? "synthetic-same-color-header-chat" : "synthetic-fixed-wallpaper-chat",
+            "indicatorVisible": indicatorVisible,
             "units": "points",
             "contentOffset": ["x": Double(scrollView.contentOffset.x), "y": Double(scrollView.contentOffset.y)],
             "viewport": rectangleJSON(viewport),
@@ -342,8 +415,11 @@ private final class WallpaperChatController: UIViewController, UIScrollViewDeleg
             "screenScale": Double(view.window?.screen.scale ?? UIScreen.main.scale),
             "messages": geometry
         ]
-        metadataLabel.text = String(format: "offset %.1f / %.1f pt · %d 条合成消息",
-                                    scrollView.contentOffset.y, documentHeight, messages.count)
+        // Keep the oracle accessible without adding artificial fixed glyphs
+        // beside the ordinary title or overlapping its rendered pixels.
+        metadataLabel.text = sameColorHeader ? nil
+            : String(format: "offset %.1f / %.1f pt · %d 条合成消息",
+                     scrollView.contentOffset.y, documentHeight, messages.count)
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
            let json = String(data: data, encoding: .utf8) {
             metadataLabel.accessibilityValue = json

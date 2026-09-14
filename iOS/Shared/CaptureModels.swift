@@ -106,6 +106,18 @@ public struct CaptureDiagnostics: Codable, Equatable, Sendable {
     public var foregroundStatus: String?
     public var foregroundCandidateCount: Int?
     public var foregroundSupportCount: Int?
+    /// Accepted matching insets and frame height, in original image pixels.
+    /// Analysis preserves the image height; these are not reduced-width units.
+    /// Nil means no accepted region was recorded, including older schema-1 data.
+    public var matchingTopInset: Int?
+    public var matchingBottomInset: Int?
+    public var matchingFrameHeight: Int?
+    /// "wholePage", "foreground", or "manual" for the accepted start.
+    public var matchingRegionSource: String?
+    /// Fixed-structure exclusion distances used for that accepted whole-page
+    /// start. Nil for foreground/manual regions, which do not use this gate.
+    public var fixedBandTop: Int?
+    public var fixedBandBottom: Int?
     public var pauseCount: Int?
     public var resumeCount: Int?
     public var recoveredResumeCount: Int?

@@ -29,7 +29,69 @@ public enum FixedRegionDetector {
               let bottom = boundary(reference: reference, current: current,
                                     displacement: downwardDisplacement, limit: limit, fromTop: false),
               top + bottom < height - 12 else { return .ambiguous }
+        // A transient overlay (recording indicator, clock, location arrow) can
+        // make the first differing row sit INSIDE a fixed bar. Rows beyond it
+        // that still share identical structure prove the bar continues, so
+        // such a boundary is not exact.
+        let band = fixedStructureBand(reference: reference, current: current)
+        guard top >= band.top, bottom >= band.bottom else { return .ambiguous }
         return .resolved(Insets(top: top, bottom: bottom))
+    }
+
+    /// Fixed UI is structure drawn at the same screen position in both frames,
+    /// whichever frame is "current". A row belongs to it when most of its
+    /// horizontal structure is pixel-identical in both frames, even if an
+    /// overlay (recording pill, clock digits) changes other columns of that
+    /// row. The band is chained from each outer edge; blank rows and overlays
+    /// may interrupt it by at most one support window. Returned extents are
+    /// exclusive distances: a matching region must start at or beyond them.
+    /// This describes whole-frame translation only; the layered wallpaper path
+    /// must not apply it, because wallpaper showing between bubbles is also
+    /// identical structure.
+    public static func fixedStructureBand(reference: GrayFrame, current: GrayFrame) -> (top: Int, bottom: Int) {
+        guard reference.width == current.width, reference.height == current.height,
+              reference.height >= 40, reference.width >= 12 else { return (0, 0) }
+        func extent(fromTop: Bool) -> Int {
+            let supportWindow = max(12, reference.height / 12)
+            let limit = reference.height * 3 / 10 + supportWindow
+            var last = -1
+            for distance in 0...min(reference.height - 1, limit) {
+                if distance - max(last, 0) > supportWindow { break }
+                let y = fromTop ? distance : reference.height - 1 - distance
+                if sharesFixedStructure(reference, current, row: y) { last = distance }
+            }
+            return last + 1
+        }
+        return (extent(fromTop: true), extent(fromTop: false))
+    }
+
+    private static func sharesFixedStructure(_ a: GrayFrame, _ b: GrayFrame, row: Int) -> Bool {
+        let edge = max(1, a.width / 24)
+        let start = row * a.width
+        var structure = 0, shared = 0
+        for x in edge..<(a.width - edge) {
+            let av = Int(a.pixels[start + x]), bv = Int(b.pixels[start + x])
+            let aDetail = max(abs(av - Int(a.pixels[start + x - 1])), abs(av - Int(a.pixels[start + x + 1])))
+            let bDetail = max(abs(bv - Int(b.pixels[start + x - 1])), abs(bv - Int(b.pixels[start + x + 1])))
+            guard max(aDetail, bDetail) >= 16 else { continue }
+            structure += 1
+            if min(aDetail, bDetail) >= 16, abs(av - bv) <= 3 { shared += 1 }
+        }
+        // Repeated table borders or bubble edges share a few columns in
+        // ordinary moving rows; fixed bars share nearly all of their glyphs.
+        return shared > 4 && shared * 10 >= structure * 6
+    }
+
+    public enum CandidateSource: Equatable, Sendable {
+        case wholePage
+        case foreground
+    }
+
+    /// The source travels with the insets so callers can exempt fixed wallpaper
+    /// from whole-page structure checks, including after reverse normalization.
+    public struct CandidateSet: Equatable, Sendable {
+        public let insets: [Insets]
+        public let source: CandidateSource
     }
 
     /// Candidate boundaries delimit the part used for matching, not permission
@@ -39,23 +101,31 @@ public enum FixedRegionDetector {
     /// that a candidate produces the same displacement.
     public static func candidates(reference: GrayFrame, current: GrayFrame,
                                   displacement: Int) -> [Insets] {
+        candidateSet(reference: reference, current: current, displacement: displacement).insets
+    }
+
+    public static func candidateSet(reference: GrayFrame, current: GrayFrame,
+                                    displacement: Int) -> CandidateSet {
         guard reference.width == current.width, reference.height == current.height,
               reference.height >= 40, displacement != 0,
-              displacement > -(reference.height - 12), displacement < reference.height - 12 else { return [] }
+              displacement > -(reference.height - 12), displacement < reference.height - 12 else { return CandidateSet(insets: [], source: .wholePage) }
         if displacement < 0 {
-            return candidates(reference: current, current: reference, displacement: -displacement)
+            return candidateSet(reference: current, current: reference, displacement: -displacement)
         }
         let foreground = ForegroundMotionRegistration.analyze(reference: reference, current: current)
         if foreground.status == .matched {
-            guard foreground.displacement == displacement, let insets = foreground.matchingInsets else { return [] }
-            return [insets]
+            guard foreground.displacement == displacement, let insets = foreground.matchingInsets else {
+                return CandidateSet(insets: [], source: .foreground)
+            }
+            return CandidateSet(insets: [insets], source: .foreground)
         }
-        if foreground.status == .rejected { return [] }
+        if foreground.status == .rejected { return CandidateSet(insets: [], source: .foreground) }
         if case .resolved(let exact) = resolve(reference: reference, current: current,
                                                downwardDisplacement: displacement) {
-            return [exact]
+            return CandidateSet(insets: [exact], source: .wholePage)
         }
         let limit = reference.height * 3 / 10
+        let band = fixedStructureBand(reference: reference, current: current)
         func evidence(fromTop: Bool) -> Int? {
             var moving: [Int] = []
             let supportWindow = max(12, reference.height / 12)
@@ -63,14 +133,17 @@ public enum FixedRegionDetector {
             // body rows beyond that limit rather than requiring all evidence
             // to fit inside the area we may exclude from matching.
             let evidenceLimit = min(reference.height - displacement - 1, limit + supportWindow)
-            for distance in 0...evidenceLimit {
+            // A row inside the shared fixed structure can differ only because
+            // of an overlay; it is never evidence of document motion.
+            for distance in 0...evidenceLimit where distance >= (fromTop ? band.top : band.bottom) {
                 let y = fromTop ? distance : reference.height - 1 - distance
                 let stationary = rowError(reference, row: y, current, row: y)
                 let motion = fromTop
                     ? rowError(reference, row: y + displacement, current, row: y)
                     : rowError(reference, row: y, current, row: y - displacement)
-                // Require an actual moving feature. Merely similar white rows
-                // cannot establish a boundary or a displacement.
+                // Keep the existing motion rule: displaced agreement alone is
+                // insufficient; the same screen row must also have changed.
+                // Blank document rows remain useful outside fixed structure.
                 if motion <= 4, stationary - motion >= 4 { moving.append(distance) }
             }
             guard let first = moving.first, first <= limit,
@@ -81,15 +154,20 @@ public enum FixedRegionDetector {
         if let top = evidence(fromTop: true), let bottom = evidence(fromTop: false),
            top + bottom < reference.height - 12 {
             raw = [Insets(top: top, bottom: bottom),
-                   Insets(top: max(0, top - 2), bottom: max(0, bottom - 2))]
+                   Insets(top: max(band.top, top - 2), bottom: max(band.bottom, bottom - 2))]
         }
         // A loading photo or a keyboard can hide all motion at an outer edge.
         // A distributed, textured interior still supplies a valid matching
         // region. Its full original outer pixels MUST remain visible as caps.
-        if let interior = movingInterior(reference: reference, current: current, displacement: displacement) {
+        if let interior = movingInterior(reference: reference, current: current, displacement: displacement),
+           interior.top >= band.top, interior.bottom >= band.bottom {
             raw.append(interior)
         }
-        return raw.reduce(into: []) { result, item in if !result.contains(item) { result.append(item) } }
+        // This also protects future whole-page candidate sources and padding.
+        let insets = raw.reduce(into: [Insets]()) { result, item in
+            if item.top >= band.top, item.bottom >= band.bottom, !result.contains(item) { result.append(item) }
+        }
+        return CandidateSet(insets: insets, source: .wholePage)
     }
 
     private static func movingInterior(reference: GrayFrame, current: GrayFrame,

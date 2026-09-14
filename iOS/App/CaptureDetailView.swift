@@ -149,6 +149,22 @@ struct CaptureDetailView: View {
                         Text(String(format: L10n.text("未衔接 %lld 帧 · 恢复 %lld 次"),
                                     Int64(diagnostics.rejectedFrames), Int64(diagnostics.recoveredGaps)))
                         Text(String(format: L10n.text("单帧最长处理 %.0f 毫秒"), diagnostics.maximumProcessingMilliseconds))
+                        Text(String(format: L10n.text("匹配方式：%@"), L10n.text(diagnostics.matchingRegionSourceLabel)))
+                        if let top = diagnostics.matchingTopInset, let bottom = diagnostics.matchingBottomInset {
+                            Text(String(format: L10n.text("已采用匹配区域：顶部 %lld · 底部 %lld 原图像素"), Int64(top), Int64(bottom)))
+                        } else {
+                            Text("已采用匹配区域：未记录")
+                        }
+                        if let height = diagnostics.matchingFrameHeight {
+                            Text(String(format: L10n.text("匹配帧高度：%lld 原图像素"), Int64(height)))
+                        }
+                        if diagnostics.fixedBandIsApplicable == false {
+                            Text("固定结构保护带：不适用")
+                        } else if let top = diagnostics.fixedBandTop, let bottom = diagnostics.fixedBandBottom {
+                            Text(String(format: L10n.text("固定结构保护带：顶部 %lld · 底部 %lld 原图像素"), Int64(top), Int64(bottom)))
+                        } else {
+                            Text("固定结构保护带：未记录")
+                        }
                         if let pauseCount = diagnostics.pauseCount, pauseCount > 0 {
                             Text(String(format: L10n.text("系统暂停 %lld 次 · 已恢复衔接 %lld 次"),
                                         Int64(pauseCount), Int64(diagnostics.recoveredResumeCount ?? 0)))

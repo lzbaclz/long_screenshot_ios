@@ -312,3 +312,15 @@
 "阶段峰值：%@ · %.0f 毫秒" = "Slowest stage peak: %@ · %.0f ms";
 "捕捉已由系统结束。" = "Capture was ended by the system.";
 "恢复后的画面无法可靠衔接，已保留暂停前的画面。请重新开始下一段。" = "The resumed view could not be aligned reliably. Views saved before the pause have been kept. Start a new capture for the next section.";
+
+/* Accepted matching region diagnostics; distances use original image pixels. */
+"整页滚动" = "Whole-page scrolling";
+"壁纸前景" = "Wallpaper foreground";
+"手动区域" = "Manual region";
+"匹配方式：%@" = "Matching mode: %@";
+"已采用匹配区域：顶部 %lld · 底部 %lld 原图像素" = "Accepted matching insets: top %lld · bottom %lld source pixels";
+"已采用匹配区域：未记录" = "Accepted matching insets: not recorded";
+"匹配帧高度：%lld 原图像素" = "Matching frame height: %lld source pixels";
+"固定结构保护带：不适用" = "Fixed-structure guard: not applicable";
+"固定结构保护带：顶部 %lld · 底部 %lld 原图像素" = "Fixed-structure guard: top %lld · bottom %lld source pixels";
+"固定结构保护带：未记录" = "Fixed-structure guard: not recorded";

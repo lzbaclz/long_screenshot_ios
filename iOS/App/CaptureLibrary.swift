@@ -113,6 +113,23 @@ final class CaptureLibrary: ObservableObject {
 }
 
 extension CaptureDiagnostics {
+    var matchingRegionSourceLabel: String {
+        switch matchingRegionSource {
+        case "wholePage": "整页滚动"
+        case "foreground": "壁纸前景"
+        case "manual": "手动区域"
+        default: "未记录"
+        }
+    }
+
+    var fixedBandIsApplicable: Bool? {
+        switch matchingRegionSource {
+        case "wholePage": true
+        case "foreground", "manual": false
+        default: nil
+        }
+    }
+
     var stageLabel: String {
         switch lastStage {
         case "starting": "等待屏幕画面"
