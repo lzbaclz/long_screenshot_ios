@@ -128,6 +128,7 @@ public struct StreamStitcher: Sendable {
     }
 
     public let configuration: AlignmentConfiguration
+    private let stationaryEvidenceRows: Range<Int>?
     public private(set) var contentOffset = 0
     public private(set) var earliestOffset = 0
     public private(set) var furthestOffset = 0
@@ -138,8 +139,12 @@ public struct StreamStitcher: Sendable {
     var cachedDetailRowCount: Int { references.reduce(0) { $0 + $1.detailSpans.count } }
     private var references: [Reference] = []
 
-    public init(configuration: AlignmentConfiguration = .init()) {
+    /// Only automatic captures already verified as foreground may pass their
+    /// original allowed context. Manual ignored rows keep the default nil.
+    /// The range helps classify each pair; it never supplies output/motion rows.
+    public init(configuration: AlignmentConfiguration = .init(), stationaryEvidenceRows: Range<Int>? = nil) {
         self.configuration = configuration
+        self.stationaryEvidenceRows = stationaryEvidenceRows
     }
 
     public mutating func reset() {
@@ -179,7 +184,8 @@ public struct StreamStitcher: Sendable {
             let reference = references[referenceIndex]
             let previousForegroundEvidence = lastForegroundRegistration
             let foreground = ForegroundMotionRegistration.analyze(reference: reference.frame, current: frame,
-                                                                    configuration: configuration)
+                                                                    configuration: configuration,
+                                                                    stationaryEvidenceRows: stationaryEvidenceRows)
             if foreground.status != .notLayered || !sawStationaryLayer {
                 lastForegroundRegistration = foreground
             }
@@ -305,6 +311,11 @@ public struct StreamStitcher: Sendable {
               configuration.ambiguityMargin.isFinite,
               (0.1...64).contains(configuration.ambiguityMargin),
               (1...8).contains(configuration.maxHistory) else { return false }
+        if let rows = stationaryEvidenceRows {
+            guard rows.lowerBound >= 0, rows.upperBound <= frame.height,
+                  rows.lowerBound <= configuration.topInset,
+                  rows.upperBound >= frame.height - configuration.bottomInset else { return false }
+        }
         return true
     }
 

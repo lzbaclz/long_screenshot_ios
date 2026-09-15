@@ -323,7 +323,14 @@ final class CaptureFramePipeline {
             if let band, insets.top < band.top || insets.bottom < band.bottom { continue }
             var region = configuration
             region.topInset = insets.top; region.bottomInset = insets.bottom
-            var replay = StreamStitcher(configuration: region)
+            // Automatic foreground has already established a fixed layer in
+            // this frame pair's original allowed analysis range. Recheck that
+            // texture context on every replay/continuation pair while keeping
+            // ALL motion features and overlap scoring inside the chosen body.
+            // Manual regions and whole-page candidates retain ROI isolation.
+            let stationaryRows = automaticallyFindRegion && source == "foreground"
+                ? configuration.topInset..<(analysis.height - configuration.bottomInset) : nil
+            var replay = StreamStitcher(configuration: region, stationaryEvidenceRows: stationaryRows)
             guard replay.ingest(candidateAnalysis).status == .started else { continue }
             let result = replay.ingest(analysis)
             if result.status == .advanced, result.contentOffset == displacement {

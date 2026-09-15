@@ -160,6 +160,65 @@ final class ScrollCaptureUITests: XCTestCase {
         app.navigationBars.buttons["Cancel"].tap()
     }
 
+    func testBoundedSeamDetailsScrollAndCloseWithoutHidingExportsInBothLanguages() {
+        for language in ["zh-Hans", "en"] {
+            app.terminate()
+            app.launchArguments = ["--demo", "--uitesting", "--demo-seam-diagnostics",
+                "-AppleLanguages", "(\(language))", "-AppleLocale", language == "en" ? "en_US" : "zh_CN"]
+            app.launch()
+            openFirstCompletedCapture()
+            XCTAssertTrue(element("detail.preview").waitForExistence(timeout: 10))
+            let diagnostics = element("detail.diagnostics")
+            XCTAssertTrue(diagnostics.waitForExistence(timeout: 5)); diagnostics.tap()
+            let summary = language == "en" ? "Checked 40 seams · adjusted 10" : "已检查 40 处 · 已调整 10 处"
+            XCTAssertTrue(app.staticTexts[summary].waitForExistence(timeout: 5))
+            let open = app.buttons["detail.seams"]
+            let found = open.waitForExistence(timeout: 5)
+            if !found || !open.isHittable {
+                attachScreenshot("seam-details-button-unreachable-\(language)")
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "seam-details-button-hierarchy-\(language)"; hierarchy.lifetime = .keepAlways; add(hierarchy)
+            }
+            XCTAssertTrue(found)
+            XCTAssertTrue(open.isHittable); open.tap()
+            let list = element("detail.seams.list")
+            XCTAssertTrue(list.waitForExistence(timeout: 5))
+            let omitted = language == "en" ? "Showing the latest 32 seams; 8 earlier entries omitted." : "仅保留最近 32 处明细，较早 8 处已省略。"
+            XCTAssertTrue(app.staticTexts[omitted].exists)
+            let scoreExplanation = language == "en"
+                ? "The seam score combines pixel differences and structure; lower is better."
+                : "接缝评分综合像素差异和结构，越低越好。"
+            XCTAssertTrue(app.staticTexts[scoreExplanation].exists)
+            XCTAssertTrue(element("detail.seams.row.9").exists)
+            let last = element("detail.seams.row.40")
+            for _ in 0..<14 where !last.isHittable { list.swipeUp() }
+            XCTAssertTrue(last.isHittable, "The final retained entry must be reachable without moving the preview")
+            XCTAssertTrue(last.label.contains(language == "en"
+                ? "Insufficient source evidence; kept the default seam" : "来源证据不足，保留默认接缝"))
+            for rawReason in ["unavailable", "insufficientGain", "defaultAlreadyQuiet", "selectedRow"] {
+                XCTAssertFalse(last.label.contains(rawReason), "Internal diagnostic codes must be translated")
+            }
+            if language == "en" { XCTAssertNil(last.label.range(of: #"\p{Han}"#, options: .regularExpression)) }
+            attachScreenshot("seam-details-bottom-\(language)")
+            let close = app.buttons["detail.seams.close"]
+            XCTAssertTrue(close.isHittable); close.tap()
+            XCTAssertFalse(list.exists)
+            let preview = element("detail.preview")
+            XCTAssertTrue(preview.waitForExistence(timeout: 5))
+            XCTAssertGreaterThan(preview.frame.height, 40)
+            XCTAssertTrue(app.buttons["detail.savePhotos"].isEnabled)
+            XCTAssertTrue(app.buttons["detail.savePhotos"].isHittable)
+            XCTAssertTrue(app.buttons["detail.share"].isEnabled)
+            XCTAssertTrue(app.buttons["detail.share"].isHittable)
+            attachScreenshot("seam-details-closed-\(language)")
+            app.buttons["detail.share"].tap()
+            XCTAssertTrue(element("ActivityListView").waitForExistence(timeout: 10))
+            let shareClose = app.buttons["header.closeButton"]
+            XCTAssertTrue(shareClose.waitForExistence(timeout: 5)); shareClose.tap()
+            XCTAssertTrue(app.buttons["detail.savePhotos"].waitForExistence(timeout: 5))
+        }
+    }
+
     private func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }

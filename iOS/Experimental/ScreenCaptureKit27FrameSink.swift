@@ -284,6 +284,7 @@ final class ScreenCaptureKit27FrameSink: NSObject, SCStreamOutput, @unchecked Se
         let lastStage = stage ?? manifest.diagnostics?.lastStage
         let pipelineTimings = pipeline?.diagnostics.stageTimings ?? manifest.diagnostics?.stageTimings
         var stats = pipeline?.diagnostics ?? manifest.diagnostics ?? .init()
+        stats.seams = manifest.diagnostics?.seams
         stats.stageTimings = .combined(pipeline: pipelineTimings, adapter: adapterTimings)
         stats.skippedSamples = skippedSamples; stats.maximumProcessingMilliseconds = maximumProcessingMilliseconds
         stats.lifecycleState = lifecycle.state.rawValue

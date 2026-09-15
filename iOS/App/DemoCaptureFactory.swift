@@ -22,6 +22,12 @@ enum DemoCaptureFactory {
             }
             manifest.status = index == 2 ? .interrupted : .completed
             manifest.stopReason = index == 2 ? "示例：捕捉中途停止，已保存的部分可以继续编辑和导出。" : nil
+            #if DEBUG
+            if index == 1, ProcessInfo.processInfo.arguments.contains("--demo-seam-diagnostics"),
+               ProcessInfo.processInfo.arguments.contains("--uitesting") {
+                manifest.diagnostics = seamDiagnostics()
+            }
+            #endif
             try repository.saveManifest(manifest)
         }
         if ProcessInfo.processInfo.arguments.contains("--demo-empty-capture") {
@@ -36,6 +42,31 @@ enum DemoCaptureFactory {
             try repository.saveManifest(manifest)
         }
     }
+
+    #if DEBUG
+    /// Explicit synthetic metadata in the isolated --demo repository only.
+    /// It verifies presentation, not real capture or seam-selection quality.
+    private static func seamDiagnostics() -> CaptureDiagnostics {
+        var diagnostics = CaptureDiagnostics()
+        diagnostics.observedFrames = 41; diagnostics.acceptedFrames = 40
+        diagnostics.lastStage = "stitching"; diagnostics.terminationCause = "manual"
+        diagnostics.matchingRegionSource = "foreground"
+        diagnostics.matchingTopInset = 80; diagnostics.matchingBottomInset = 70
+        diagnostics.matchingFrameHeight = 1_100
+        var seams = CaptureSeamDiagnostics()
+        let defaults = ["identicalOverlap", "defaultAlreadyQuiet", "insufficientGain", "noSafeCandidate",
+                        "quota", "userEdits", "insufficientOverlap", "unavailable"]
+        for index in 0..<40 {
+            let shifted = index.isMultiple(of: 4)
+            seams.record(.init(direction: index.isMultiple(of: 2) ? "prepend" : "append",
+                defaultRow: 367, selectedRow: shifted ? 487 : 367, replacedBodyRows: shifted ? 120 : 0,
+                defaultScore: 48, selectedScore: shifted ? 16 : 48, candidateCount: 481,
+                reason: shifted ? "selected" : defaults[index % defaults.count]))
+        }
+        diagnostics.seams = seams
+        return diagnostics
+    }
+    #endif
 
     private static func makePage(page: Int, variant: Int) -> UIImage {
         let format = UIGraphicsImageRendererFormat()

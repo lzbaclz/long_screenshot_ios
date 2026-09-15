@@ -256,3 +256,20 @@ extension CaptureSessionManifest {
         }
     }
 }
+
+extension CaptureSeamRecord {
+    var reasonLabel: String {
+        switch reason {
+        case "selected": "已选择较平稳的位置"
+        case "identicalOverlap": "重叠画面一致，保留默认接缝"
+        case "defaultAlreadyQuiet": "默认位置已平稳"
+        case "insufficientGain": "改善有限，保留默认接缝"
+        case "noSafeCandidate": "未找到更稳妥的位置"
+        case "quota": "达到屏数边界，保留默认接缝"
+        case "userEdits": "已有编辑，保留默认接缝"
+        case "insufficientOverlap": "可用重叠不足，保留默认接缝"
+        case "disabled": "本次未启用接缝选址"
+        default: "来源证据不足，保留默认接缝"
+        }
+    }
+}

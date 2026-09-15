@@ -122,8 +122,7 @@ final class SampleHandler: RPBroadcastSampleHandler, @unchecked Sendable {
         guard let storage = repository, var session = manifest else { return }
         guard let buffer = CMSampleBufferGetImageBuffer(sample) else {
             activeProcessingStage = "missingVideoFrame"
-            manifest?.diagnostics = framePipeline?.diagnostics ?? CaptureDiagnostics()
-            manifest?.diagnostics?.lastStage = "missingVideoFrame"
+            refreshDiagnostics(stage: "missingVideoFrame")
             registerRejection(now: now); return
         }
         let attachment = CMGetAttachment(sample, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil)
@@ -331,6 +330,8 @@ final class SampleHandler: RPBroadcastSampleHandler, @unchecked Sendable {
         let lastStage = stage ?? manifest?.diagnostics?.lastStage
         let pipelineTimings = framePipeline?.diagnostics.stageTimings ?? manifest?.diagnostics?.stageTimings
         var stats = framePipeline?.diagnostics ?? manifest?.diagnostics ?? .init()
+        // Seam records describe repository transactions, not alignment plans.
+        stats.seams = manifest?.diagnostics?.seams
         stats.stageTimings = .combined(pipeline: pipelineTimings, adapter: adapterTimings)
         stats.skippedSamples = skippedSamples
         stats.maximumProcessingMilliseconds = maximumProcessingMilliseconds

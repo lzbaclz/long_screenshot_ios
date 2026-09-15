@@ -5,7 +5,11 @@ import UIKit
 struct FixtureReaderApp: App {
     var body: some Scene {
         WindowGroup {
-            if ProcessInfo.processInfo.arguments.contains("--wallpaper-chat")
+            if ProcessInfo.processInfo.arguments.contains("--glass-grid") {
+                GlassGridHost()
+                    .ignoresSafeArea()
+                    .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("--glass-dark") ? .dark : .light)
+            } else if ProcessInfo.processInfo.arguments.contains("--wallpaper-chat")
                 || ProcessInfo.processInfo.arguments.contains("--same-color-header-chat") {
                 WallpaperChatHost()
                     .statusBarHidden(ProcessInfo.processInfo.arguments.contains("--same-color-header-chat"))

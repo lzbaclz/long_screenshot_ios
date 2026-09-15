@@ -89,6 +89,38 @@ public struct CaptureStrip: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+/// Actual published seam choices. Rows are in the incoming original image;
+/// shift replaces existing body pixels without adding document height.
+public struct CaptureSeamRecord: Codable, Equatable, Sendable {
+    public let direction: String
+    public let defaultRow: Int
+    public let selectedRow: Int
+    public let replacedBodyRows: Int
+    public let defaultScore: Double?
+    public let selectedScore: Double?
+    public let candidateCount: Int?
+    public let reason: String
+    public var applied: Bool { replacedBodyRows > 0 }
+}
+
+/// Keep numeric diagnostics bounded even during many small scroll steps.
+public struct CaptureSeamDiagnostics: Codable, Equatable, Sendable {
+    public private(set) var totalCount = 0
+    public private(set) var appliedCount = 0
+    public private(set) var omittedCount = 0
+    public private(set) var recent: [CaptureSeamRecord] = []
+    public init() {}
+    public mutating func record(_ seam: CaptureSeamRecord) {
+        totalCount += 1
+        if seam.applied { appliedCount += 1 }
+        recent.append(seam)
+        if recent.count > 32 {
+            omittedCount += recent.count - 32
+            recent.removeFirst(recent.count - 32)
+        }
+    }
+}
+
 /// Numeric diagnostics only: never image pixels, recognized text, or app names.
 public struct CaptureDiagnostics: Codable, Equatable, Sendable {
     public var observedFrames = 0
@@ -109,6 +141,8 @@ public struct CaptureDiagnostics: Codable, Equatable, Sendable {
     /// Accepted matching insets and frame height, in original image pixels.
     /// Analysis preserves the image height; these are not reduced-width units.
     /// Nil means no accepted region was recorded, including older schema-1 data.
+    /// Owned by repository commit, not pipeline plans. Optional for schema 1.
+    public var seams: CaptureSeamDiagnostics?
     public var matchingTopInset: Int?
     public var matchingBottomInset: Int?
     public var matchingFrameHeight: Int?

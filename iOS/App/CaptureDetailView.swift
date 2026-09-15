@@ -13,6 +13,7 @@ struct CaptureDetailView: View {
     @State private var message: String?
     @State private var showEditor = false
     @State private var showDelete = false
+    @State private var showSeams = false
     @State private var showSizeChoice = false
     @State private var shareFile: SharedImage?
     @State private var format = CaptureExportFormat.png
@@ -80,6 +81,9 @@ struct CaptureDetailView: View {
         .task { await reload() }
         .sheet(isPresented: $showEditor, onDismiss: { Task { await reload() } }) {
             if let session { CaptureEditorView(session: session) }
+        }
+        .sheet(isPresented: $showSeams) {
+            if let seams = session?.diagnostics?.seams { CaptureSeamDetails(seams: seams) }
         }
         .sheet(item: $shareFile) { item in
             ShareImageSheet(url: item.url) { completed in
@@ -184,6 +188,21 @@ struct CaptureDetailView: View {
                 }
                 .font(.caption)
                 .accessibilityIdentifier("detail.diagnostics")
+                if let seams = diagnostics.seams {
+                    // Keep this action outside the DisclosureGroup's combined
+                    // accessibility control so it remains an independent button
+                    // and is reachable even when capture details are collapsed.
+                    Text(String(format: L10n.text("已检查 %lld 处 · 已调整 %lld 处"), Int64(seams.totalCount), Int64(seams.appliedCount)))
+                        .font(.caption)
+                        .foregroundStyle(ScrollTheme.secondary)
+                    Button { showSeams = true } label: {
+                        Text("查看接缝明细").frame(minHeight: 44)
+                    }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                        .tint(ScrollTheme.teal)
+                        .accessibilityIdentifier("detail.seams")
+                }
             }
             if session.isDemo {
                 Text(LocalizedStringKey(session.hasImage
@@ -329,6 +348,53 @@ struct ZoomableImage: UIViewRepresentable {
             contentSize = CGSize(width: bounds.width, height: height + 32)
             minimumZoomScale = 1
             contentOffset = .zero
+        }
+    }
+}
+
+/// The bounded history still needs its own scrolling surface: expanding all
+/// rows in the preview's information stack would hide the image and exports.
+private struct CaptureSeamDetails: View {
+    @Environment(\.dismiss) private var dismiss
+    let seams: CaptureSeamDiagnostics
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(String(format: L10n.text("已检查 %lld 处 · 已调整 %lld 处"), Int64(seams.totalCount), Int64(seams.appliedCount)))
+                    Text("行号为各次来源帧的原图像素，不是当前长图坐标。")
+                    Text("接缝评分综合像素差异和结构，越低越好。")
+                    if seams.omittedCount > 0 {
+                        Text(String(format: L10n.text("仅保留最近 32 处明细，较早 %lld 处已省略。"), Int64(seams.omittedCount)))
+                    }
+                }
+                ForEach(Array(seams.recent.enumerated()), id: \.offset) { index, seam in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(format: L10n.text("第 %lld 处 · %@ · 默认 %lld → 实际 %lld 行"),
+                            Int64(seams.totalCount - seams.recent.count + index + 1),
+                            L10n.text(seam.direction == "prepend" ? "向上" : "向下"),
+                            Int64(seam.defaultRow), Int64(seam.selectedRow)))
+                        if let before = seam.defaultScore, let after = seam.selectedScore {
+                            Text(String(format: L10n.text("接缝评分 %.2f → %.2f · 替换 %lld 行原有正文"),
+                                before, after, Int64(seam.replacedBodyRows)))
+                        }
+                        Text(LocalizedStringKey(seam.reasonLabel))
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("detail.seams.row.\(seams.totalCount - seams.recent.count + index + 1)")
+                }
+            }
+            .accessibilityIdentifier("detail.seams.list")
+            .navigationTitle("接缝选址")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("关闭") { dismiss() }
+                        .accessibilityIdentifier("detail.seams.close")
+                }
+            }
         }
     }
 }

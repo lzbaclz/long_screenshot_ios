@@ -30,8 +30,14 @@ public enum ForegroundMotionRegistration {
         let lastRow: Int
     }
 
+    /// Motion features, validation and overlap always stay inside configuration.
+    /// An automatic foreground capture may explicitly retain its original
+    /// allowed source range for stationary context after narrowing the ROI.
+    /// Nil preserves ROI-only analysis. Every pair revalidates this context;
+    /// a prior layer classification is never carried forward as evidence.
     public static func analyze(reference: GrayFrame, current: GrayFrame,
-                               configuration: AlignmentConfiguration = .init()) -> Result {
+                               configuration: AlignmentConfiguration = .init(),
+                               stationaryEvidenceRows: Range<Int>? = nil) -> Result {
         func result(_ status: Status, rejection: StitchDecision.Rejection? = nil,
                     candidates: Int = 0) -> Result {
             .init(status: status, displacement: nil, confidence: status == .unchanged ? 1 : 0, rejection: rejection,
@@ -49,6 +55,11 @@ public enum ForegroundMotionRegistration {
             return result(.rejected, rejection: .invalidConfiguration)
         }
         let end = height - bottom
+        let evidenceRows = stationaryEvidenceRows ?? top..<end
+        guard evidenceRows.lowerBound >= 0, evidenceRows.upperBound <= height,
+              evidenceRows.lowerBound <= top, evidenceRows.upperBound >= end else {
+            return result(.rejected, rejection: .invalidConfiguration)
+        }
         guard end - top >= 12, width >= 12 else { return result(.notLayered) }
         let firstPixel = top * width, lastPixel = end * width
         if reference.pixels[firstPixel..<lastPixel].elementsEqual(current.pixels[firstPixel..<lastPixel]) {
@@ -65,7 +76,7 @@ public enum ForegroundMotionRegistration {
         let edge = max(4, width / 24)
         var detailed = 0
         var stablePatterns: [UInt64: (count: Int, bands: Set<Int>, firstX: Int, lastX: Int)] = [:]
-        for y in stride(from: top + 8, to: end - 8, by: 4) {
+        for y in stride(from: evidenceRows.lowerBound + 8, to: evidenceRows.upperBound - 8, by: 4) {
             for x in stride(from: edge, to: width - edge, by: 2) {
                 let p = y * width + x
                 let probes = [p, p - 4, p + 4, p - width * 8, p + width * 8]
@@ -80,7 +91,7 @@ public enum ForegroundMotionRegistration {
                     var signature: UInt64 = 0
                     for value in values { signature = signature << 6 | UInt64(value / 4) }
                     var pattern = stablePatterns[signature] ?? (0, [], x, x)
-                    pattern.count += 1; pattern.bands.insert((y - top) * 8 / (end - top))
+                    pattern.count += 1; pattern.bands.insert((y - evidenceRows.lowerBound) * 8 / evidenceRows.count)
                     pattern.firstX = min(pattern.firstX, x); pattern.lastX = max(pattern.lastX, x)
                     stablePatterns[signature] = pattern
                 }
@@ -150,14 +161,7 @@ public enum ForegroundMotionRegistration {
             }
         }
         guard !votes.isEmpty else { return rejected(.ambiguous) }
-        let peaks = votes.keys.sorted {
-            if votes[$0] != votes[$1] { return votes[$0, default: 0] > votes[$1, default: 0] }
-            return abs($0) == abs($1) ? $0 < $1 : abs($0) < abs($1)
-        }.prefix(8)
-        var shifts: Set<Int> = []
-        for peak in peaks {
-            for shift in (peak - 1)...(peak + 1) where shift != 0 && abs(shift) <= maximumShift { shifts.insert(shift) }
-        }
+        let shifts = proposedShifts(votes: votes, maximumShift: maximumShift)
         let sourceA = eligibleA.sorted().map { a[$0] }, sourceB = eligibleB.sorted().map { b[$0] }
         var scores: [Score] = []
         for shift in shifts {
@@ -182,6 +186,32 @@ public enum ForegroundMotionRegistration {
         return .init(status: .matched, displacement: best.shift, confidence: 0.65 * quality + 0.35 * separation,
                      rejection: nil, matchingInsets: .init(top: regionTop, bottom: height - regionEnd),
                      candidateCount: shifts.count, supportCount: best.support)
+    }
+
+    /// Preserve all original high-vote hypotheses, then cover distinct peaks.
+    /// Quantization can spread one repeated motif across adjacent vote bins;
+    /// those shoulders must not consume every opportunity to test a different
+    /// displacement. Existing +/-1 rivals remain in the set, so this does not
+    /// weaken one-pixel ambiguity checks. At most 2 * 8 * 3 = 48 validations.
+    static func proposedShifts(votes: [Int: Int], maximumShift: Int) -> Set<Int> {
+        let peaks = votes.keys.sorted {
+            if votes[$0] != votes[$1] { return votes[$0, default: 0] > votes[$1, default: 0] }
+            return abs($0) == abs($1) ? $0 < $1 : abs($0) < abs($1)
+        }
+        let peakBudget = 8, radius = 1
+        var shifts: Set<Int> = []
+        func include(_ peak: Int) {
+            for shift in (peak - radius)...(peak + radius) where shift != 0 && abs(shift) <= maximumShift {
+                shifts.insert(shift)
+            }
+        }
+        for peak in peaks.prefix(peakBudget) { include(peak) }
+        var separated: [Int] = []
+        for peak in peaks where separated.allSatisfy({ abs($0 - peak) > 2 * radius }) {
+            separated.append(peak); include(peak)
+            if separated.count == peakBudget { break }
+        }
+        return shifts
     }
 
     /// Linear row fingerprints propose positions; full pixel equality verifies

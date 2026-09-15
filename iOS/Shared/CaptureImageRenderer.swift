@@ -65,11 +65,20 @@ extension CaptureSessionRepository {
     /// owned by this transaction are removed after publication succeeds.
     @discardableResult
     func commit(_ result: CaptureFrameResult, maximumBodyHeight: Int,
-                to manifest: inout CaptureSessionManifest) throws -> Bool {
+                seamSelectionEnabled: Bool = true, to manifest: inout CaptureSessionManifest) throws -> Bool {
         guard manifest.status == .capturing, maximumBodyHeight > 0 else {
             throw CaptureStorageError.invalidManifest
         }
-        let publishedCandidate = try loadSession(id: manifest.id).provisionalFrame
+        let published = try loadSession(id: manifest.id)
+        let publishedCandidate = published.provisionalFrame
+        // A stale caller cannot publish an older output or overwrite edits.
+        // Missing seam evidence may keep the default seam, but an output
+        // conflict must fail before staging any new or replacement files.
+        guard published.strips == manifest.strips, published.edits == manifest.edits,
+              published.leadingEdgeStripID == manifest.leadingEdgeStripID,
+              published.trailingEdgeStripID == manifest.trailingEdgeStripID,
+              published.pixelWidth == manifest.pixelWidth, published.status == manifest.status,
+              published.outputKind == manifest.outputKind else { throw CaptureStorageError.invalidManifest }
         var updated = manifest
         updated.provisionalFrame = publishedCandidate
         var newURLs: [URL] = []
@@ -100,6 +109,31 @@ extension CaptureSessionRepository {
             if leading { updated.strips.insert(strip, at: 0); updated.leadingEdgeStripID = strip.id }
             else { updated.strips.append(strip); updated.trailingEdgeStripID = strip.id }
         }
+        func trimRetainedBody(_ rows: Int, prepend: Bool) throws {
+            var remaining = rows
+            while remaining > 0 {
+                let bodyIndices = updated.strips.indices.filter {
+                    updated.strips[$0].id != updated.leadingEdgeStripID && updated.strips[$0].id != updated.trailingEdgeStripID
+                }
+                guard let index = prepend ? bodyIndices.first : bodyIndices.last else { throw CaptureStorageError.invalidManifest }
+                let old = updated.strips[index]
+                if old.pixelHeight <= remaining {
+                    remaining -= old.pixelHeight
+                    updated.strips.remove(at: index)
+                } else {
+                    let image = try readCaptureStrip(old, sessionID: updated.id)
+                    let sourceSkip = prepend ? remaining : 0
+                    guard let crop = image.cropping(to: CGRect(x: 0, y: sourceSkip,
+                        width: old.pixelWidth, height: old.pixelHeight - remaining)) else {
+                        throw CaptureStorageError.imageEncodingFailed
+                    }
+                    // Immutable replacement: never use editor trim metadata for
+                    // capture bookkeeping, and never overwrite a published PNG.
+                    updated.strips[index] = try encode(crop, sourceTop: old.sourceTopPixel + sourceSkip)
+                    remaining = 0
+                }
+            }
+        }
         for pending in result.strips {
             let remaining = max(0, maximumBodyHeight - updated.bodyPixelHeight)
             let count = min(pending.image.height, remaining)
@@ -107,11 +141,22 @@ extension CaptureSessionRepository {
             // At a quota boundary the retained rows must touch the existing
             // seam: bottom of a prepended head, top of an appended tail.
             let skipped = pending.placement == .prepend ? pending.image.height - count : 0
-            guard let image = pending.image.cropping(to: CGRect(x: 0, y: skipped, width: pending.image.width,
-                                                                height: count)) else {
+            let bodyHeightBefore = updated.bodyPixelHeight
+            let seam = pending.isInitial ? nil : selectCaptureSeam(for: pending, admittedRows: count,
+                manifest: updated, eligible: result.status == .advanced,
+                quotaLimited: count < pending.image.height || count == remaining, enabled: seamSelectionEnabled)
+            let shift = seam?.shift ?? 0
+            let sourceTop = pending.sourceTopPixel + skipped - (pending.placement == .append ? shift : 0)
+            let image: CGImage?
+            if shift > 0, let full = pending.fullImage {
+                image = full.cropping(to: CGRect(x: 0, y: sourceTop, width: full.width, height: count + shift))
+            } else {
+                image = pending.image.cropping(to: CGRect(x: 0, y: skipped, width: pending.image.width, height: count))
+            }
+            guard let image else {
                 throw CaptureStorageError.imageEncodingFailed
             }
-            let sourceTop = pending.sourceTopPixel + skipped
+            if shift > 0 { try trimRetainedBody(shift, prepend: pending.placement == .prepend) }
             let strip = try encode(image, sourceTop: sourceTop)
             if pending.placement == .prepend {
                 let index = updated.leadingEdgeStripID == nil ? 0 : 1
@@ -125,9 +170,16 @@ extension CaptureSessionRepository {
                     try replaceEdge(image: full, rows: (sourceTop - pending.topInset)..<sourceTop, leading: true)
                 }
                 if pending.isInitial || pending.placement == .append {
-                    let end = sourceTop + count
+                    let end = sourceTop + count + shift
                     try replaceEdge(image: full, rows: end..<(end + pending.bottomInset), leading: false)
                 }
+            }
+            guard updated.bodyPixelHeight == bodyHeightBefore + count else { throw CaptureStorageError.invalidManifest }
+            if let seam {
+                if updated.diagnostics == nil { updated.diagnostics = .init() }
+                var history = updated.diagnostics?.seams ?? .init()
+                history.record(seam.record)
+                updated.diagnostics?.seams = history
             }
             if !pending.isInitial { updated.outputKind = .stitched }
             if updated.bodyPixelHeight >= maximumBodyHeight { break }
