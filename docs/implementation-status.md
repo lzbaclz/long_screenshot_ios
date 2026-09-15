@@ -12,7 +12,7 @@
 
 ## 当前交付
 
-**0.1.5（6）已完成本地验收，正在准备手动分发。** 新增基于真实保留正文的接缝选址，避免横切半透明卡片；同时修复重复图标候选遗漏、自动正文范围丢失固定背景证据，以及明细按钮不能独立访问的问题。核心 108、原生 Release 92、真实模拟器滚动 10 条、中英文明细和保存分享各 1 项均通过。玻璃路线 40 处接缝中跨卡片由 30 处降为 0 处，四图完整高度与来源像素验收通过；这些是合成页面证据，实际手机仍由 TestFlight 复测。详见 [0.1.5 更新记录](release/0.1.5-testflight.md) 和 [开发验收流程](validation/beta-6-acceptance.md)。
+**0.1.5（6）已开放内部 TestFlight。** 2026-09-15 03:59（Europe/London）核对 `Longlet Internal` 与 `Longlet Beta Updates` 均为“正在测试”，中英文测试说明已保存；自动组设置和两个组的成员关系保留。 新增基于真实保留正文的接缝选址，避免横切半透明卡片；同时修复重复图标候选遗漏、自动正文范围丢失固定背景证据，以及明细按钮不能独立访问的问题。核心 108、原生 Release 92、真实模拟器滚动 10 条、中英文明细和保存分享各 1 项均通过。玻璃路线 40 处接缝中跨卡片由 30 处降为 0 处，四图完整高度与来源像素验收通过；这些是合成页面证据，实际手机仍由 TestFlight 复测。详见 [0.1.5 更新记录](release/0.1.5-testflight.md) 和 [开发验收流程](validation/beta-6-acceptance.md)。
 
 **2026-09-15 App Store Connect 图标显示修复：** 用户反馈应用列表和分发页仍显示占位图标。已确认正式图标随各测试构建上传，但商店 `iOS 1.0` 草稿未关联构建；此前仅核对原因，未保存关联。本次在草稿选择已上传的 `0.1.4（5）` 并保存，重新打开 App 列表后通过实际浏览器截图确认 Longlet 显示青色连续折页图标。商店草稿仍为 `1.0 准备提交`，未点击“添加以供审核”，未发布 App Store 版本，也未改变 TestFlight 构建。此次完成的是后台构建关联与显示修复，未重跑应用测试。
 
@@ -42,10 +42,11 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 
 | 类别 | 实际结果 | 范围与证据 |
 | --- | --- | --- |
-| Swift 核心回归 | 76 / 76 通过 | 同色固定栏、胶囊变化、精确边界／padding、候选来源与原有回归；`.work/beta5-validation/core-all.log` |
-| 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/beta5-validation/benchmark/report.json`，不计入真机 G1 或真实成功率 |
-| 本地原生单元与像素验收 | 81 / 81 通过，0 跳过 | iOS Simulator 26.3.1；`.work/beta5-validation/unit-first.xcresult`，含同色固定栏完整 PNG 像素、区域诊断及既有场景 |
-| 模拟器真实滚动截图注入 | 6 / 6 通过，0 跳过 | `.work/beta5-validation/header-final.xcresult` + `wallpaper-ui.xcresult`；106 帧、94 次真实拖动，固定标题仅 1 处、完整消息逐条核对；不是 ReplayKit 真机测试 |
+| Swift 核心回归 | 108 / 108 通过 | 最终接缝评分、候选与背景证据范围、弱边框及原有回归；`.work/beta6-validation/core-final-all.log` |
+| 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/beta6-validation/benchmark-final/report.json`，不计入真机 G1 或真实成功率 |
+| 本地原生单元与像素验收 | 92 / 92 通过，0 跳过 | Release 优化构建；`.work/beta6-validation/unit-accepted.xcresult`，完整 PNG 来源、范围、首尾、事务回滚与既有场景 |
+| 模拟器真实滚动截图注入 | 10 / 10 通过，0 跳过 | `.work/beta6-validation/glass-accepted.xcresult` + `old-capture-accepted.xcresult`；玻璃 48 帧／40 拖动、4 张 1206×7122 完整图，跨卡片接缝 30→0；原固定栏／壁纸 6 路线通过，不是 ReplayKit 真机 |
+| Beta 6 界面与导出 | 2 / 2 通过，0 跳过 | 中英文明细两个完整循环及 PNG／JPEG 真实保存分享；`seam-details-ui-retry.xcresult`、`save-share-accepted.xcresult` |
 | Photos 系统拒绝补充 | 1 / 1 通过 | `.work/permission-test-results/20260914-094057/tests.xcresult`，实际系统拒绝、只读 TCC 核对且额度不变；不是物理 iPhone 权限验收 |
 | 界面流程 | 7 条场景已覆盖并通过 | 初轮 6 / 7；标识覆盖修复后相关 2 项复测通过，按钮对比度调整后对应 1 项复测通过。证据见 [本次更新记录](release/0.1.1-testflight.md) |
 | 首版 IPA 静态审计 | 列出的检查全部通过 | [0.1.0 IPA 审计](validation/automated/ipa-audit.md)；0.1.1 分发物另行记录 |
@@ -53,12 +54,12 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 | 历史 iOS 27 SDK 编译 | 当时的实验代码通过 | [CI run 34792456674](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34792456674)；不是本轮新代码的 SDK 27 验收，默认 Beta 未启用实验后端 |
 | 历史远程 CI | 改为手动触发前通过 | 提交 `ba444ed` 的 [run 34792767736](https://github.com/lzbaclz/long_screenshot_ios/actions/runs/34792767736) 三项均成功；本轮按用户要求没有启动云端 CI |
 
-两份 `.xcresult` 的测试数量、0 失败、0 跳过与模拟器平台已读取结果摘要核对。它们证明相应本地自动化路径，不代替真实跨应用屏幕捕捉、设备内存、耗电或兼容性结果。
+本轮五份 `.xcresult` 的测试数量、0 失败、0 跳过与模拟器平台已读取结果摘要核对。它们证明相应本地自动化路径，不代替真实跨应用屏幕捕捉、设备内存、耗电或兼容性结果。
 
 ## 环境与构建基线
 
 - 上传构建使用 Xcode 26.3、iPhoneOS SDK 26.2，最低 iOS 18；通过命令设置 `DEVELOPER_DIR`，未修改全局 Xcode 配置。
-- 本轮真实滚动使用 `Longlet-Beta2`，原生单元回归在另一台自有 `Longlet-PhotosDenied` 模拟器执行，均为 iOS 26.3.1；原生单元未操作照片权限。历史开发使用 `LongScreenshot-Dev`，历史 Photos 拒绝验证另行保留。
+- 本轮使用 `Longlet-Beta2` 与 `Longlet-PhotosDenied` 两台专用 iOS 26.3.1 模拟器分批执行原生及真实滚动，最终 Release 原生在前者执行；单元与滚动测试未修改照片权限。历史开发使用 `LongScreenshot-Dev`，历史 Photos 拒绝验证另行保留。
 - 上传 IPA 已使用 Apple Distribution 签名；主应用、广播扩展与共享 App Group 的打包配置均经静态审计。真实设备安装及跨 App 行为仍待用户验证。
 - 本地没有 iOS 27 SDK；远程已通过该 SDK 的设备目标编译。相关实验代码单独推进，**已上传 Beta 未启用或链接 ScreenCaptureKit 后端**，不能用于证明 iOS 27 实验能力。
 
@@ -74,13 +75,13 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 | 默认固定区域处理 | 已实现并通过合成/图片回归 | 首次滚动时保守检测，手动值覆盖；歧义停止并提示，不宣称所有导航栏均能识别 |
 | 中英文与品牌资产 | 已集成 | 续页 / Longlet、图标、界面与权限/错误文案；跨系统显示仍可继续打磨 |
 | 测试免费额度 | 每周 50 次已实现并验证 | 不依赖沙盒收据；重复、失败、取消不多扣，升级保留本周记录；新购买入口关闭，正式商业政策后续再定 |
-| App Store Connect 与内部 Beta | 本次分发已完成 | App ID、上传处理、测试说明、1 构建及本人邀请已落实；安装与反馈待确认 |
+| App Store Connect 与内部 Beta | 0.1.5（6）已开放 | 两个内部组均可测试，说明与自动组设置已核对；用户已有历史版本真机反馈，当前版本效果继续收集 |
 | 真机跨 App 采集与资源测试 | 未完成 | 待用户按 [真机规程](validation/physical-device-protocol.md) 记录机型、系统、入口、内容与结果 |
 | G1：30 用例 × 两组设备系统 | 未完成 | 60 次真实系统验证，模拟器与纯算法结果不替代 |
 | G2 / G3 门槛 | 未完成 | 保留原计划的真实样本、成功率、资源与稳定性门槛 |
 | iOS 27 新采集后端 | 实验编译通过，未用于 Beta | 已有远程 SDK 编译证据，运行和稳定性仍待真机验证 |
 | 8 人访谈与竞品实测 | 未完成 | 需要真实参与者、同条件测试与失败记录 |
-| 20 人内测与付费意愿 | 未完成 | 本人的 1 次邀请不等于 20 名非项目成员完成测试 |
+| 20 人内测与付费意愿 | 未完成 | 现有内部组不等于 20 名非项目成员完成测试 |
 | 正式商店与全球地区资料 | 部分准备 | App 记录及公开隐私 URL 已有；正式商品、最终地区、审核及其他资料继续核对 |
 | 正式上架与发布后 30 天复盘 | 未完成 | 依赖正式发布决定及真实使用、交易数据 |
 
