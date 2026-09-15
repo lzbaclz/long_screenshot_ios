@@ -61,8 +61,8 @@
 - 当前发布构建使用 Xcode 26.3；本地原生测试使用 iOS 26.3.1 模拟器。
 
 ```sh
-git clone --branch feat/scroll-capture-mvp https://github.com/lzbaclz/long_screenshot_ios.git
-cd long_screenshot_ios
+git clone https://github.com/lzbaclz/long_screenshot_iphone.git
+cd long_screenshot_iphone
 
 # 使用 Homebrew 安装工程生成工具
 brew install xcodegen
