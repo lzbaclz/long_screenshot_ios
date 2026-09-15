@@ -12,7 +12,7 @@
 
 ## 当前交付
 
-**0.1.4（5）开发与本地验收完成，正在手动归档。** 按用户提供的 v2 原型修复同色状态栏／导航栏重复，补齐候选来源、采集复核和区域诊断。76 项核心、81 项原生、6 条真实模拟器滚动、217 基准及保存／分享回归通过。详见 [0.1.4 更新记录](release/0.1.4-testflight.md) 和 [本轮流程](validation/beta-5-acceptance.md)。尚未上传，不把以下历史构建状态作为本次分发完成。
+**0.1.4（5）已开放内部 TestFlight，原组明确显示“正在测试”。** 按用户提供的 v2 原型修复同色状态栏／导航栏重复，补齐候选来源、采集复核和区域诊断。76 项核心、81 项原生、6 条真实模拟器滚动、217 基准及保存／分享回归通过。详见 [0.1.4 更新记录](release/0.1.4-testflight.md) 和 [本轮流程](validation/beta-5-acceptance.md)。现有内部测试员可更新；以下历史构建状态保留作对照。
 
 **0.1.3（4）已开放内部 TestFlight，原组状态已确认“正在测试”。** 本轮依据新反馈补上固定照片壁纸、独立滚动消息的模型，修复暂停即结束、旧参考误否决和起点重定问题。核心 66 项、原生与像素 74 项、无可见人工编号的真实模拟器拖动 3 条路线及保存／分享回归通过。详见 [0.1.3 更新记录](release/0.1.3-testflight.md)；现有测试员可更新。下方历史版本状态保留作对照，实际手机微信效果仍需用新 Beta 复测。
 
@@ -34,10 +34,10 @@ App Store Connect 已创建 Longlet，App ID 为 `6811703874`，bundle ID 为 `d
 
 | 类别 | 实际结果 | 范围与证据 |
 | --- | --- | --- |
-| Swift 核心回归 | 66 / 66 通过 | 固定壁纸前景、双向、平滑纹理、配置边界、安全拒绝；`.work/beta4-validation/core-final.log` |
-| 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/beta4-validation/benchmark/report.json`，不计入真机 G1 或真实成功率 |
-| 本地原生单元与像素验收 | 74 / 74 通过，0 跳过 | iOS Simulator 26.3.1；`.work/beta4-validation/unit-final.xcresult`，含原生壁纸前景全部不透明像素、暂停后未知间隔及实际 PNG |
-| 模拟器真实滚动截图注入 | 3 / 3 通过，0 跳过 | `.work/beta4-validation/simulator-final.xcresult`；53 帧、47 次真实拖动，逐条核对消息顺序，无可见人工编号；不是 ReplayKit 真机测试 |
+| Swift 核心回归 | 76 / 76 通过 | 同色固定栏、胶囊变化、精确边界／padding、候选来源与原有回归；`.work/beta5-validation/core-all.log` |
+| 批量合成基准 | 217 / 217 通过 | 168 常规 + 49 压力，共 8,776 帧；`.work/beta5-validation/benchmark/report.json`，不计入真机 G1 或真实成功率 |
+| 本地原生单元与像素验收 | 81 / 81 通过，0 跳过 | iOS Simulator 26.3.1；`.work/beta5-validation/unit-first.xcresult`，含同色固定栏完整 PNG 像素、区域诊断及既有场景 |
+| 模拟器真实滚动截图注入 | 6 / 6 通过，0 跳过 | `.work/beta5-validation/header-final.xcresult` + `wallpaper-ui.xcresult`；106 帧、94 次真实拖动，固定标题仅 1 处、完整消息逐条核对；不是 ReplayKit 真机测试 |
 | Photos 系统拒绝补充 | 1 / 1 通过 | `.work/permission-test-results/20260914-094057/tests.xcresult`，实际系统拒绝、只读 TCC 核对且额度不变；不是物理 iPhone 权限验收 |
 | 界面流程 | 7 条场景已覆盖并通过 | 初轮 6 / 7；标识覆盖修复后相关 2 项复测通过，按钮对比度调整后对应 1 项复测通过。证据见 [本次更新记录](release/0.1.1-testflight.md) |
 | 首版 IPA 静态审计 | 列出的检查全部通过 | [0.1.0 IPA 审计](validation/automated/ipa-audit.md)；0.1.1 分发物另行记录 |

@@ -1,6 +1,6 @@
 # 续页 / Longlet 隐私政策
 
-生效日期：2026年9月14日。适用：续页 / Longlet 0.1.0–0.1.3。服务提供者：Ziqing Li（子卿 李），与当前 App Store Connect 开发者账号一致。支持邮箱：**chestnutlee23@163.com**。
+生效日期：2026年9月14日。适用：续页 / Longlet 0.1.0–0.1.4。服务提供者：Ziqing Li（子卿 李），与当前 App Store Connect 开发者账号一致。支持邮箱：**chestnutlee23@163.com**。
 
 ## 中文
 
@@ -20,7 +20,7 @@
 - 裁剪、接缝调整和遮挡矩形等编辑记录，以及停止方式、长度和固定栏设置。
 - 本机导出记录的随机会话标识与日期，用于免费额度计算和避免同一作品重复计数。
 - 通过 Apple StoreKit 核验的购买权限状态，用于解锁及恢复 Pro 功能。
-- 本机采集诊断，包括帧计数、各处理阶段的次数与耗时、暂停／恢复计数、匹配候选／支持点数量及停止原因；诊断不包含识别出的文字或来源应用名称，也不会自动发送给开发者。起点候选图片在本机暂存，成功拼接后清理；中断后可作为明确标注的单屏恢复。
+- 本机采集诊断，包括帧计数、各处理阶段的次数与耗时、暂停／恢复计数、匹配候选／支持点数量、匹配区域／帧高／固定结构保护范围及停止原因；诊断不包含识别出的文字或来源应用名称，也不会自动发送给开发者。起点候选图片在本机暂存，成功拼接后清理；中断后可作为明确标注的单屏恢复。
 
 当前版本不要求建立开发者账号，没有广告或第三方行为分析 SDK，也不进行跨应用广告跟踪。应用不需要读取照片图库、通讯录、位置或摄像头。
 
@@ -60,7 +60,7 @@ The current version matches overlapping content on your device and saves accepte
 
 Local information includes original image strips, exported files, dimensions, timestamps, capture status and error descriptions; crop, seam and redaction edits; capture preferences; and random session identifiers and export dates used to apply the free allowance without counting the same capture twice. The app also checks Apple StoreKit purchase entitlements to unlock or restore Pro.
 
-Local capture diagnostics include frame counts, per-stage processing counts and timing, pause/resume counts, numeric matching-candidate and support counts, and stop reasons. They contain no recognized screen text or source app names and are not automatically sent to the developer. A provisional starting image is stored locally until stitching is committed; after an interruption it may be recovered as a clearly labeled single-screen image.
+Local capture diagnostics include frame counts, per-stage processing counts and timing, pause/resume counts, numeric matching-candidate and support counts, matching regions/frame height/fixed-structure guard ranges, and stop reasons. They contain no recognized screen text or source app names and are not automatically sent to the developer. A provisional starting image is stored locally until stitching is committed; after an interruption it may be recovered as a clearly labeled single-screen image.
 
 The current app has no developer account sign-in, advertising or third-party behavioral analytics SDK, and does not perform cross-app advertising tracking. It does not need to read your photo library, contacts, location or camera.
 
