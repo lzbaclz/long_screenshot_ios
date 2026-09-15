@@ -1,6 +1,6 @@
-# 续页 / Longlet 隐私政策
+# 续页 Xuye / Longlet 隐私政策
 
-生效日期：2026年9月14日。适用：续页 / Longlet 0.1.0–0.1.4。服务提供者：Ziqing Li（子卿 李），与当前 App Store Connect 开发者账号一致。支持邮箱：**chestnutlee23@163.com**。
+生效日期：2026年9月15日。适用：续页 App 0.1.0–0.1.5 与续页 Xuye 官网。官网使用拼音品牌 Xuye；当前 App / TestFlight 英文显示名仍为 Longlet。服务提供者：Ziqing Li（子卿 李），与当前 App Store Connect 开发者账号一致。支持邮箱：**chestnutlee23@163.com**。
 
 ## 中文
 
@@ -19,8 +19,8 @@
 - 原始图片分块、生成的导出文件，以及图片尺寸、创建时间、捕捉状态和失败说明。
 - 裁剪、接缝调整和遮挡矩形等编辑记录，以及停止方式、长度和固定栏设置。
 - 本机导出记录的随机会话标识与日期，用于免费额度计算和避免同一作品重复计数。
-- 通过 Apple StoreKit 核验的购买权限状态，用于解锁及恢复 Pro 功能。
-- 本机采集诊断，包括帧计数、各处理阶段的次数与耗时、暂停／恢复计数、匹配候选／支持点数量、匹配区域／帧高／固定结构保护范围及停止原因；诊断不包含识别出的文字或来源应用名称，也不会自动发送给开发者。起点候选图片在本机暂存，成功拼接后清理；中断后可作为明确标注的单屏恢复。
+- 通过 Apple StoreKit 核验的既有购买权限状态；当前 0.1.5 版本不提供新购买入口。
+- 本机采集诊断，包括帧计数、各处理阶段的次数与耗时、暂停／恢复计数、匹配候选／支持点数量、匹配区域／帧高／固定结构保护范围、接缝默认与实际位置、候选数量、替换行数和评分及停止原因；诊断不包含识别出的文字或来源应用名称，也不会自动发送给开发者。起点候选图片在本机暂存，成功拼接后清理；中断后可作为明确标注的单屏恢复。
 
 当前版本不要求建立开发者账号，没有广告或第三方行为分析 SDK，也不进行跨应用广告跟踪。应用不需要读取照片图库、通讯录、位置或摄像头。
 
@@ -36,9 +36,17 @@
 
 ### Apple 购买、系统服务与支持邮件
 
+当前 0.1.5 版本提供每周 50 个新作品的免费导出额度，不提供新购买入口。已有权益的核验与恢复通过 Apple StoreKit 处理。
+
 Pro 购买和恢复由 Apple StoreKit 与 App Store 处理。开发者不接收你的完整付款卡信息，也没有自行运营的支付服务器。Apple 会按其服务规则处理购买、下载、诊断以及你选择发送的 TestFlight 反馈；参见 [Apple 隐私政策](https://www.apple.com/legal/privacy/)。
 
 如果你主动发邮件求助，我们会收到你的邮箱地址、邮件正文和你自行附加的内容，并用它们处理该请求。邮件通过邮箱服务处理，不是应用自动上传。请只提供排查所需信息，避免附带未经遮挡的私人聊天。支持邮件的保留以解决请求及履行适用义务所需为限；可通过上述邮箱提出查阅或删除请求。我们无法替你删除已经发送给其他接收方的副本。
+
+### 官网访问
+
+续页 Xuye 官网提供产品介绍、操作示例、使用帮助和本政策，不提供截图上传、在线拼接或账号注册功能。切换网页示例不会访问你的屏幕、相册或文件。
+
+页面未接入开发者自行配置的广告或行为分析服务，也不设置用户追踪 Cookie。访问时，托管及网络服务仍可能处理 IP 地址、浏览器信息和请求日志，以传输页面、保障安全和处理故障；App 本机截图内容不会因此发送到网站。你主动点击 Apple、GitHub 或电子邮件链接后，将使用相应服务。
 
 ### 你的选择与政策变更
 
@@ -48,7 +56,7 @@ Pro 购买和恢复由 Apple StoreKit 与 App Store 处理。开发者不接收�
 
 ### Who provides Longlet
 
-Longlet, named 续页 in Simplified Chinese, is an iPhone app for creating long screenshots. The provider is Ziqing Li, identified as the seller on its App Store page. Effective date: September 14, 2026. Contact: **chestnutlee23@163.com**.
+Longlet, named 续页 in Simplified Chinese, is an iPhone app for creating long screenshots. The provider is Ziqing Li, identified as the seller on its App Store page. Effective date: September 15, 2026. The policy also covers the Xuye website; Xuye is the website brand, while the current English app/TestFlight name remains Longlet. App versions covered: 0.1.0–0.1.5. Contact: **chestnutlee23@163.com**.
 
 ### Screen processing
 
@@ -58,9 +66,9 @@ The current version matches overlapping content on your device and saves accepte
 
 ### Information stored locally
 
-Local information includes original image strips, exported files, dimensions, timestamps, capture status and error descriptions; crop, seam and redaction edits; capture preferences; and random session identifiers and export dates used to apply the free allowance without counting the same capture twice. The app also checks Apple StoreKit purchase entitlements to unlock or restore Pro.
+Local information includes original image strips, exported files, dimensions, timestamps, capture status and error descriptions; crop, seam and redaction edits; capture preferences; and random session identifiers and export dates used to apply the free allowance without counting the same capture twice. The app also checks existing Apple StoreKit purchase entitlements. Version 0.1.5 does not offer new purchases.
 
-Local capture diagnostics include frame counts, per-stage processing counts and timing, pause/resume counts, numeric matching-candidate and support counts, matching regions/frame height/fixed-structure guard ranges, and stop reasons. They contain no recognized screen text or source app names and are not automatically sent to the developer. A provisional starting image is stored locally until stitching is committed; after an interruption it may be recovered as a clearly labeled single-screen image.
+Local capture diagnostics include frame counts, per-stage processing counts and timing, pause/resume counts, numeric matching-candidate and support counts, matching regions/frame height/fixed-structure guard ranges, default and selected seam positions, candidate counts, replaced rows, scores, and stop reasons. They contain no recognized screen text or source app names and are not automatically sent to the developer. A provisional starting image is stored locally until stitching is committed; after an interruption it may be recovered as a clearly labeled single-screen image.
 
 The current app has no developer account sign-in, advertising or third-party behavioral analytics SDK, and does not perform cross-app advertising tracking. It does not need to read your photo library, contacts, location or camera.
 
@@ -76,9 +84,17 @@ Capture storage is marked as excluded from system backups and uses iOS data prot
 
 ### Apple services and support
 
+Version 0.1.5 includes 50 new successful exports per week and does not offer new purchases. Existing entitlement checks and restoration are handled by Apple StoreKit.
+
 Apple StoreKit and the App Store process Pro purchases and restoration. The developer does not receive complete payment-card details or operate a separate payment server. Apple handles purchases, downloads, diagnostics and feedback you choose to send through TestFlight under its own policies. See [Apple’s Privacy Policy](https://www.apple.com/legal/privacy/).
 
 If you email support, we receive your email address, message and attachments and use them to address your request. This is handled through the email service, not automatically uploaded by the app. Send only information needed to investigate, and avoid attaching unredacted private conversations. Support correspondence is retained as needed to resolve the request and meet applicable obligations; you may request access or deletion using the contact above. We cannot delete copies you have sent to other recipients.
+
+### Website visits
+
+The Xuye website provides product information, interface examples, support and this policy. It has no screenshot uploads, online stitching or account registration. Switching examples does not access your screen, photo library or files.
+
+The pages do not include advertising, developer-configured behavioral analytics or tracking cookies. Hosting and network providers may process IP addresses, browser information and request logs to deliver pages, protect the service and troubleshoot problems. Your local app captures are not transmitted to the website. Following links to Apple, GitHub or email uses the selected service under its own rules.
 
 ### Your choices and changes
 
