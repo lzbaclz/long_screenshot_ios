@@ -12,6 +12,8 @@
 
 ## 当前交付
 
+**2026-09-15 已配置官网公开 TestFlight 内测。** 新建外部组“续页官网公开内测”，关联最新 0.1.5（6）并提交 Beta 审核，开启自动通知测试员。Apple 生成公开邀请 `https://testflight.apple.com/join/Qb5CcCep`，设为向所有人开放，未加额外筛选或自定义名额上限。当前外测状态为“正在等待审核”，公开页显示暂不接受新测试员；审核通过前大众尚不能加入。GitHub Pages 官网已增加邀请链接、经独立解码核验的二维码、复制／保存入口和安装说明，清楚区分正式版与外测状态。原内部测试组及 App Store 正式审核未改动，私人审核电话未进入公开文件。详见 [公开内测记录](release/public-testflight.md)。
+
 **2026-09-15 官网托管纠正：已迁移到本仓库 GitHub Pages。** 按用户明确要求采用与极拼一致的方案，正式网站为 `https://lzbaclz.github.io/long_screenshot_iphone/`，从 `codex/app-store-pages` 分支根目录发布，主分支源码在 `website/`。首页、支持和隐私页面匿名访问均 HTTP 200；旧托管站点已改为仅所有者可访问，匿名请求返回 HTTP 403。当前网页、规范地址、sitemap、仓库说明和 GitHub 主页链接中的旧托管网址已替换，Apple 营销、支持和隐私字段同步使用 GitHub Pages。当前 0.1.5 为等待审核，本轮未撤回或重新送审；没有增加应用自动测试或自动上传流程。完整记录见 [网站交付记录](xuye-website.md)。
 
 **2026-09-15 续页 Xuye 官网与审核网址。** 新建产品宣传、使用帮助及中英文隐私页面，采用现有青色折页 Logo 和 0.1.5 实际模拟器界面；支持功能示例切换、键盘操作、图片放大及手机导航。正式地址为 `https://lzbaclz.github.io/long_screenshot_iphone`，支持和隐私页分别为 `/support.html`、`/privacy.html`。GitHub Pages 为当前托管方式；73 处本地链接／锚点、JavaScript 语法、桌面与手机布局及主要交互检查通过。GitHub 仓库主页链接已同步，源码保存在 `website/`，完整说明见 [网站交付记录](xuye-website.md)。本次仅采用网页品牌“续页 Xuye”，没有更改 App / TestFlight 的 Longlet 英文显示名或 Bundle ID。

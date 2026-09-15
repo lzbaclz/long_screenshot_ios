@@ -48,3 +48,18 @@ if(dialog){
   dialog.querySelector('[data-close]').addEventListener('click',()=>dialog.close());
   dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();});
 }
+// Apple-issued public invitation; never use a generated or third-party short URL.
+const publicTestFlightURL = 'https://testflight.apple.com/join/Qb5CcCep';
+const copyInvite = document.querySelector('#copy-testflight-link');
+if (copyInvite) {
+  copyInvite.addEventListener('click', async () => {
+    const result = document.querySelector('#testflight-copy-status');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(publicTestFlightURL);
+      result.textContent = '邀请链接已复制';
+    } catch {
+      result.textContent = '请长按下方邀请地址，选择复制链接。';
+    }
+  });
+}
