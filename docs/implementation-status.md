@@ -12,7 +12,9 @@
 
 ## 当前交付
 
-**2026-09-15 续页 Xuye 官网已公开上线，审核网址已保存。** 新建产品宣传、使用帮助及中英文隐私页面，采用现有青色折页 Logo 和 0.1.5 实际模拟器界面；支持功能示例切换、键盘操作、图片放大及手机导航。正式地址为 `https://xuye.zqli0924.chatgpt.site`，支持和隐私页分别为 `/support.html`、`/privacy.html`。Sites 返回公开部署成功；73 处本地链接／锚点、JavaScript 语法、桌面与手机布局及主要交互检查通过。GitHub 仓库主页链接已同步，源码保存在 `website/`，完整说明见 [网站交付记录](xuye-website.md)。本次仅采用网页品牌“续页 Xuye”，没有更改 App / TestFlight 的 Longlet 英文显示名或 Bundle ID。
+**2026-09-15 官网托管纠正：已迁移到本仓库 GitHub Pages。** 按用户明确要求采用与极拼一致的方案，正式网站为 `https://lzbaclz.github.io/long_screenshot_iphone/`，从 `codex/app-store-pages` 分支根目录发布，主分支源码在 `website/`。首页、支持和隐私页面匿名访问均 HTTP 200；旧托管站点已改为仅所有者可访问，匿名请求返回 HTTP 403。当前网页、规范地址、sitemap、仓库说明和 GitHub 主页链接中的旧托管网址已替换，Apple 营销、支持和隐私字段同步使用 GitHub Pages。当前 0.1.5 为等待审核，本轮未撤回或重新送审；没有增加应用自动测试或自动上传流程。完整记录见 [网站交付记录](xuye-website.md)。
+
+**2026-09-15 续页 Xuye 官网与审核网址。** 新建产品宣传、使用帮助及中英文隐私页面，采用现有青色折页 Logo 和 0.1.5 实际模拟器界面；支持功能示例切换、键盘操作、图片放大及手机导航。正式地址为 `https://lzbaclz.github.io/long_screenshot_iphone`，支持和隐私页分别为 `/support.html`、`/privacy.html`。GitHub Pages 为当前托管方式；73 处本地链接／锚点、JavaScript 语法、桌面与手机布局及主要交互检查通过。GitHub 仓库主页链接已同步，源码保存在 `website/`，完整说明见 [网站交付记录](xuye-website.md)。本次仅采用网页品牌“续页 Xuye”，没有更改 App / TestFlight 的 Longlet 英文显示名或 Bundle ID。
 
 本轮重新进入应用列表时，Apple 当前 0.1.5 状态为“被开发者拒绝”，与下方先前 17:45 的成功送审记录不同；本轮未执行撤回，不推断操作来源。官网据此显示“上架准备中”。已在当前可编辑版本保存官网营销与支持 URL，并在 App 隐私页保存新隐私 URL；保留原 GitHub 政策作为兼容入口。审核电话号码未放入公开网页或仓库，已有真机验证边界保持原状态。
 

@@ -16,9 +16,9 @@
 | 宣传文本 | 从想保留的起点开始滚动，把连续内容留成一张长图。支持裁剪、遮挡、PNG 和 JPEG 导出，图片在本机处理。 | Turn scrolling content into a long image. Crop, redact, and export as PNG or JPEG, with image processing on your iPhone. |
 | 关键词草案 | 滚动截图,长图,拼接,截屏,聊天记录,网页,图片编辑,隐私遮挡 | scrolling,capture,stitch,chat,webpage,redact,crop,vertical,screen |
 | 支持邮箱 | chestnutlee23@163.com | chestnutlee23@163.com |
-| 营销 URL | [续页 Xuye 官网](https://xuye.zqli0924.chatgpt.site) | Same public product website |
-| 支持 URL | [已保存的使用帮助与联系方式](https://xuye.zqli0924.chatgpt.site/support.html) | Same public support page, including English quick guide |
-| 隐私政策 URL | [已保存的中英文政策](https://xuye.zqli0924.chatgpt.site/privacy.html) | English policy available at the #english section |
+| 营销 URL | [续页 Xuye 官网](https://lzbaclz.github.io/long_screenshot_iphone) | Same public product website |
+| 支持 URL | [已保存的使用帮助与联系方式](https://lzbaclz.github.io/long_screenshot_iphone/support.html) | Same public support page, including English quick guide |
+| 隐私政策 URL | [已保存的中英文政策](https://lzbaclz.github.io/long_screenshot_iphone/privacy.html) | English policy available at the #english section |
 | 版权 | 2026 Ziqing Li | 2026 Ziqing Li |
 
 名称与副标题均按 30 字符上限编写，最终由 App Store Connect 校验；名称研究不等于名称已保留或商标已核准。规则依据：[App information](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information)。

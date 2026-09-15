@@ -6,10 +6,10 @@
 
 | Apple 字段 / 页面 | 公开地址 |
 | --- | --- |
-| 产品首页 / 营销网址 | https://xuye.zqli0924.chatgpt.site/ |
-| 技术支持网址 | https://xuye.zqli0924.chatgpt.site/support.html |
-| 隐私政策网址 | https://xuye.zqli0924.chatgpt.site/privacy.html |
-| 英文隐私政策章节 | https://xuye.zqli0924.chatgpt.site/privacy.html#english |
+| 产品首页 / 营销网址 | https://lzbaclz.github.io/long_screenshot_iphone/ |
+| 技术支持网址 | https://lzbaclz.github.io/long_screenshot_iphone/support.html |
+| 隐私政策网址 | https://lzbaclz.github.io/long_screenshot_iphone/privacy.html |
+| 英文隐私政策章节 | https://lzbaclz.github.io/long_screenshot_iphone/privacy.html#english |
 
 网站面向公众开放，页面不要求登录。没有新建公开 TestFlight 邀请或虚构下载地址，内部测试继续通过已有邀请。
 
@@ -26,10 +26,16 @@
 
 桌面 1440×1000、手机 390×844、窄屏 320×760 下检查可读性和横向溢出；首页、帮助、隐私页引用与锚点检查通过。验证了功能页签切换与方向键、图片弹窗与 Escape 关闭、手机菜单和 English 隐私章节。JavaScript 语法检查通过。
 
-静态源码留在 `website/`，Sites 项目为 `appgprj_6aa977ee4cd88191a87c422bd40502a3`。公开部署由 Sites 返回成功状态和实际网址；首次提供的预期域名与最终正式域名不同，已将规范地址和 sitemap 同步为实际正式域名。
+静态源码留在本仓库 `website/`，由 GitHub Pages 从 `codex/app-store-pages` 分支根目录发布，与极拼官网采用相同方式。页面规范地址、sitemap、仓库主页和审核字段统一使用现有 GitHub 用户名下的项目地址。旧托管站点已关闭公开访问；当前文件不保留旧托管网址或其账号标识。
+
+## GitHub Pages 迁移（2026-09-15）
+
+按用户明确要求采用与极拼一致的 GitHub 仓库托管。撤销旧站公开访问，改为仅所有者可访问；网站内容和功能保留，替换所有当前页面、说明及审核资料中的旧地址。
 
 ## Apple 后台状态
 
 本轮从应用列表读取到 0.1.5 当前状态为“被开发者拒绝”，与此前 17:45 提交时的“等待审核”不同。本轮没有执行撤回或重新送审，也不推断该变化由谁发起。网站按当前实际状态写为“App Store 上架准备中”。
 
 在当前可编辑版本中保存了上述营销、技术支持网址，并在“App 隐私”中保存新隐私政策网址。完整保存核对结果在实施记录中记录。原 GitHub 隐私政策保留并同步内容，因此此前版本中的旧链接继续有可读政策。
+
+迁移最终验证：GitHub Pages 的首页、支持页和隐私页均匿名 HTTP 200，页面内不含旧托管域名；旧站匿名 HTTP 403，访问权限仅保留所有者。Apple 支持、营销和隐私字段已改为本页 GitHub Pages 地址。当前版本为 0.1.5 等待审核，本次未撤回或重新送审。

@@ -10,7 +10,7 @@
 
 [如何使用](#如何使用) · [快速开始](#快速开始) · [真机与签名](#真机与签名) · [版本记录](#版本记录) · [当前边界](#当前边界) · [隐私政策](docs/release/privacy-policy.md)
 
-[续页 Xuye 官网](https://xuye.zqli0924.chatgpt.site/) · [使用帮助](https://xuye.zqli0924.chatgpt.site/support.html) · [网页隐私政策](https://xuye.zqli0924.chatgpt.site/privacy.html)
+[续页 Xuye 官网](https://lzbaclz.github.io/long_screenshot_iphone/) · [使用帮助](https://lzbaclz.github.io/long_screenshot_iphone/support.html) · [网页隐私政策](https://lzbaclz.github.io/long_screenshot_iphone/privacy.html)
 
 
 ## 功能
@@ -133,7 +133,7 @@ SIMULATOR_UDID="你的模拟器UDID" ./scripts/test-ios.sh -parallel-testing-ena
 
 默认产物位于 `.work/archives/<时间>/Longlet.xcarchive`，也可用 `LONGLET_ARCHIVE_DIR` 指定目录。脚本只完成本地归档；之后通过 Xcode Organizer 上传，并在 App Store Connect 配置 TestFlight 构建与测试组。
 
-目前已开放内部 TestFlight，App Store 正式上架仍在准备中；最近一次后台核对中，0.1.5（6）已回到可编辑状态，尚未正式上架。尚无公开 TestFlight 邀请链接。此前送审记录和当前状态分别见 [正式提交记录](docs/release/0.1.5-app-store.md) 与 [实施记录](docs/implementation-status.md)。[续页 Xuye 官网](https://xuye.zqli0924.chatgpt.site) 提供产品介绍、使用帮助和可供审核填写的独立隐私网址。
+目前已开放内部 TestFlight，App Store 正式上架仍在准备中；最近一次后台核对中，0.1.5（6）已回到可编辑状态，尚未正式上架。尚无公开 TestFlight 邀请链接。此前送审记录和当前状态分别见 [正式提交记录](docs/release/0.1.5-app-store.md) 与 [实施记录](docs/implementation-status.md)。[续页 Xuye 官网](https://lzbaclz.github.io/long_screenshot_iphone) 提供产品介绍、使用帮助和可供审核填写的独立隐私网址。
 
 ## 项目结构
 
