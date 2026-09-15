@@ -130,7 +130,7 @@ SIMULATOR_UDID="你的模拟器UDID" ./scripts/test-ios.sh -parallel-testing-ena
 
 默认产物位于 `.work/archives/<时间>/Longlet.xcarchive`，也可用 `LONGLET_ARCHIVE_DIR` 指定目录。脚本只完成本地归档；之后通过 Xcode Organizer 上传，并在 App Store Connect 配置 TestFlight 构建与测试组。
 
-目前已开放内部 TestFlight；**尚无公开 TestFlight 邀请链接，尚未正式上架 App Store**。发布进度以 [实施记录](docs/implementation-status.md) 为准。
+目前已开放内部 TestFlight；**0.1.5（6）已于 2026-09-15 提交 App Store，正在等待审核，尚未正式上架**。尚无公开 TestFlight 邀请链接。详见 [正式提交记录](docs/release/0.1.5-app-store.md) 和 [实施记录](docs/implementation-status.md)。
 
 ## 项目结构
 

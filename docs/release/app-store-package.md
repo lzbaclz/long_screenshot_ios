@@ -1,5 +1,7 @@
 # 续页 / Longlet 商店与测试分发资料
 
+**最新正式状态（2026-09-15）：0.1.5（6）已提交 App Store，等待审核。** 本轮实际保存英文商店资料、免费价格、每周 50 个新作品额度说明、审核联系人、4+ 分级、隐私答复和四张真实模拟器界面截图。详见 [0.1.5 正式提交记录](0.1.5-app-store.md)；下方较早中英文草案不作为已保存字段或已通过审核的证明。
+
 状态更新（2026-09-14）：App Store Connect 已创建 Longlet（App ID `6811703874`），0.1.0（1）已上传并处理完成，分配至 `Longlet Internal`，已邀请用户本人；构建状态已核对为“正在测试”。实际接受与安装尚未确认，正式 App Store 上架未进行。详见 [本次 TestFlight 记录](0.1.0-testflight.md)。下文正式商店文案仍为可编辑草案。
 
 发布主体使用项目负责人已有的付费 Apple Developer 团队；本文不保存团队凭据或私人测试者邮箱。支持邮箱：**chestnutlee23@163.com**。目标为全球发行，实际地区以最终可用性及资料完成情况为准。
@@ -14,9 +16,9 @@
 | 宣传文本 | 从想保留的起点开始滚动，把连续内容留成一张长图。支持裁剪、遮挡、PNG 和 JPEG 导出，图片在本机处理。 | Turn scrolling content into a long image. Crop, redact, and export as PNG or JPEG, with image processing on your iPhone. |
 | 关键词草案 | 滚动截图,长图,拼接,截屏,聊天记录,网页,图片编辑,隐私遮挡 | scrolling,capture,stitch,chat,webpage,redact,crop,vertical,screen |
 | 支持邮箱 | chestnutlee23@163.com | chestnutlee23@163.com |
-| 支持 URL | 待部署的公开 HTTPS 支持页面，不能填邮箱或本地路径 | Public HTTPS support page: pending |
-| 隐私政策 URL | [已保存的公开政策](https://github.com/lzbaclz/long_screenshot_ios/blob/feat/scroll-capture-mvp/docs/release/privacy-policy.md) | Same public policy URL saved for TestFlight |
-| 版权 | 待填写实际权利人及年份 | Actual rights holder and year: pending |
+| 支持 URL | [已保存的公开使用说明与联系方式](https://github.com/lzbaclz/long_screenshot_iphone#readme) | Same public support document |
+| 隐私政策 URL | [正式提交已保存的公开政策](https://github.com/lzbaclz/long_screenshot_iphone/blob/main/docs/release/privacy-policy.md) | Same public policy document |
+| 版权 | 2026 Ziqing Li | 2026 Ziqing Li |
 
 名称与副标题均按 30 字符上限编写，最终由 App Store Connect 校验；名称研究不等于名称已保留或商标已核准。规则依据：[App information](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information)。
 
@@ -35,7 +37,7 @@
 
 单次最长 2 分钟，可设置最多 5、10 或 20 个有效可视区域。20 屏不等于所有设备都能导出同尺寸原图；超过单图安全尺寸时，你可以裁剪，或明确选择缩小后导出。Pro 与免费版遵守相同资源上限。
 
-免费版本每周可成功导出 3 个新捕捉，同一作品重复导出只计一次。Pro 是一次性购买，解除次数限制，价格以 App Store 购买界面显示为准。正式收费仅在商品配置及购买回归完成后启用。
+当前 0.1.5 版本每周可成功导出 50 个新捕捉，同一作品重复导出只计一次，失败或取消不扣次数。本次免费分发，不提供新购买入口；后续商业政策另行决定。
 
 ## English description draft
 
@@ -52,7 +54,7 @@ Capture requires iOS consent and keeps system indicators visible. Scroll steadil
 
 Each capture is limited to two minutes and a selected maximum of 5, 10 or 20 effective screen areas. Very large images may require cropping or your explicit choice to export a smaller image. Pro uses the same device safety limits.
 
-The free version allows three successfully exported new captures per week; exporting the same capture again does not consume another allowance. Pro is a one-time purchase that removes the count limit. Its price is shown in Apple’s purchase interface. Sales begin only after the product and purchase flows are configured and tested.
+Version 0.1.5 includes 50 successfully exported new captures per week. Failed or cancelled exports and repeated exports of the same capture do not consume another allowance. This release is free and does not offer new purchases; any future commercial policy will be decided separately.
 
 ## 审核说明 / App Review notes
 
