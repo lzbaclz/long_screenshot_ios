@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://lzbaclz.github.io/long_screenshot_iphone/sitemap.xml
